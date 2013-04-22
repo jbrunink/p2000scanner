@@ -142,6 +142,8 @@ void ShowMessage()
         printf("Message: %s\n", Current_MSG[MSG_MESSAGE]);
 	printf("Capcode: %s\n", Current_MSG[MSG_CAPCODE]);
 	printf("Mode: %s\n", Current_MSG[MSG_TYPE]);
+	printf("Time: %s\n", Current_MSG[MSG_TIME]);
+	printf("Datum: %s\n", Current_MSG[MSG_DATE]);
 
 }
 
@@ -319,7 +321,14 @@ void show_phase_speed(int vt)
 		break;
 	}
 
-	
+	if (vt == MODE_SHORT_INSTRUCTION)
+	{
+		strcpy(Current_MSG[MSG_TYPE], " GROUP ");	// PH: Add "GROUP" in stead of "INSTR"
+	}
+	else
+	{
+		strcpy(Current_MSG[MSG_TYPE], vtype[vt]);	// Add flex format.
+	}	
 
 
 }
@@ -437,6 +446,7 @@ void showframe(int asa, int vsa)
 			case MODE_SECURE:
 
 			show_address(frame[j], frame[j+1], bLongAddress);
+			show_phase_speed(vt);
 				int w1, w2, k, c= 0;
 				//int iFragmentNumber, iAssignedFrame;
 				long int cc, cc2, cc3;
@@ -511,7 +521,7 @@ void showframe(int asa, int vsa)
 						//printf("");
 						continue;
 					}
-
+					show_phase_speed(vt);
 					iAssignedFrame  = (frame[vb] >> 10) & 0x7f;	// Frame with groupmessage
 					FlexTempAddress = (frame[vb] >> 17) & 0x7f;	// Listen to this groupcode
 				break;

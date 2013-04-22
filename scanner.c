@@ -134,6 +134,7 @@ void ShowMessage()
 
         printf("Message: %s\n", Current_MSG[MSG_MESSAGE]);
 	printf("Capcode: %s\n", Current_MSG[MSG_CAPCODE]);
+	printf("Mode: %s\n", Current_MSG[MSG_TYPE]);
 
 }
 
@@ -1018,10 +1019,11 @@ int
 main()
 {
 	printf("*** Program started. Mede mogelijk gemaakt door:\n");
-	printf("*** Peter Hunt\n");
-	printf("*** Rutger A. Heunks\n");
-	printf("*** Andreas Verhoeven\n");
-	printf("*** Martin Kollaard\n");
+	printf("* Peter Hunt\n");
+	printf("* Rutger A. Heunks\n");
+	printf("* Andreas Verhoeven\n");
+	printf("* Martin Kollaard\n");
+	printf("2013\n");
 
 	setupecc();
 

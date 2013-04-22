@@ -10,6 +10,9 @@
 #include <strings.h>
 #include <time.h>       /* time_t, struct tm, time, localtime, asctime */
 
+#include <json_object.h>
+#include <json.h>
+
 #define SYNC1	0xA6C6
 #define SYNC2	0xAAAA
 
@@ -20,6 +23,8 @@
 
 char vtype[8][9]={"SECURE ", " INSTR ", "SH/TONE", " StNUM ",
 				  " SfNUM ", " ALPHA ", "BINARY ", " NuNUM "};
+
+char aGroupnumbers[16][8]={"-1", "-2", "-3", "-4", "-5", "-6", "-7", "-8", "-9", "10", "11", "12", "13", "14", "15", "16"};
 
 #define STAT_FLEX1600		2
 
@@ -45,6 +50,8 @@ char vtype[8][9]={"SECURE ", " INSTR ", "SH/TONE", " StNUM ",
 
 #define MAXIMUM_GROUPSIZE       1000
 #define CAPCODES_INDEX		0
+
+int iMessagesCounter = 0;
 
 char Current_MSG[9][MAX_STR_LEN];			// PH: Buffer for all message items
 											// 1 = MSG_CAPCODE
@@ -159,6 +166,8 @@ void ConvertGroupcall(int groupbit, char *vtype, int capcode)
 
 			iConvertingGroupcall=groupbit+1;
 
+			printf("GROUP%s\n", aGroupnumbers[iConvertingGroupcall-1]);
+
 			strcpy(Current_MSG[MSG_TYPE], " GROUP ");
 
 			for (int nCapcode=1; nCapcode <= aGroupCodes[groupbit][CAPCODES_INDEX]; nCapcode++)
@@ -177,7 +186,7 @@ void ConvertGroupcall(int groupbit, char *vtype, int capcode)
 
 			sprintf(Current_MSG[MSG_CAPCODE], "%07i", capcode);
 			strcpy(Current_MSG[MSG_TYPE], vtype);
-
+			iMessagesCounter++;
 			ShowMessage();
 			memset(aGroupCodes[groupbit], 0, sizeof(int) * MAXIMUM_GROUPSIZE);
 
@@ -378,6 +387,7 @@ void show_address(long int l, long int l2, int bLongAddress)
 		bFLEX_isGroupMessage = 1;
 	} else
 	{
+		iMessagesCounter++;
 		bFLEX_isGroupMessage = 0;
 	}
 
@@ -836,7 +846,7 @@ frame_flex(char input)
 		{
 			if (nOnes(iBitBuffer[2] ^ EOT1) + nOnes(iBitBuffer[3] ^ EOT2) == 0)	// End of transmission?
 			{
-				printf("\n");
+				printf("\nMessages counter: %d\n", iMessagesCounter);
 				iFlexTimer = 0;
 				return;
 			}
@@ -1018,6 +1028,7 @@ open_port(void)
 int
 main()
 {
+
 	printf("*** Program started. Mede mogelijk gemaakt door:\n");
 	printf("* Peter Hunt\n");
 	printf("* Rutger A. Heunks\n");

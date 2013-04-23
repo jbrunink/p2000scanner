@@ -9,6 +9,11 @@
 #include <stdlib.h>     /* strtol */
 #include <strings.h>
 #include <time.h>       /* time_t, struct tm, time, localtime, asctime */
+#include <getopt.h>
+#include <assert.h>
+#include <ctype.h>
+#include <zmq.h>
+#include <signal.h>
 
 #include <json_object.h>
 #include <json.h>
@@ -21,8 +26,7 @@
 
 #define BUFSIZE 1024
 
-char vtype[8][9]={"SECURE ", " INSTR ", "SH/TONE", " StNUM ",
-				  " SfNUM ", " ALPHA ", "BINARY ", " NuNUM "};
+char vtype[8][9]={"SECURE", "INSTR", "SH/TONE", "StNUM", "SfNUM", "ALPHA", "BINARY ", "NuNUM"};
 
 char aGroupnumbers[16][8]={"-1", "-2", "-3", "-4", "-5", "-6", "-7", "-8", "-9", "10", "11", "12", "13", "14", "15", "16"};
 
@@ -47,13 +51,37 @@ char aGroupnumbers[16][8]={"-1", "-2", "-3", "-4", "-5", "-6", "-7", "-8", "-9",
 #define MSG_BITRATE		6
 #define MSG_MESSAGE		7
 #define MSG_MOBITEX		8
+#define MSG_TIMESTAMP		9
 
 #define MAXIMUM_GROUPSIZE       1000
 #define CAPCODES_INDEX		0
 
 int iMessagesCounter = 0;
+int exitRequested = 0;
+void * socket;
+void * context;
 
-char Current_MSG[9][MAX_STR_LEN];			// PH: Buffer for all message items
+void signalhandler(int sig)
+{
+	if(sig == 2)
+	{
+		printf("SIGINT received, requesting exit from while()\n");
+		exitRequested = 1;
+	}
+}
+
+char *trim(char *s) {
+    char *ptr;
+    if (!s)
+        return NULL;   // handle NULL string
+    if (!*s)
+        return s;      // handle empty string
+    for (ptr = s + strlen(s) - 1; (ptr >= s) && isspace(*ptr); --ptr);
+    ptr[1] = '\0';
+    return s;
+}
+
+char Current_MSG[10][MAX_STR_LEN];			// PH: Buffer for all message items
 											// 1 = MSG_CAPCODE
 											// 2 = MSG_TIME
 											// 3 = MSG_DATE
@@ -64,7 +92,7 @@ char Current_MSG[9][MAX_STR_LEN];			// PH: Buffer for all message items
 											// 8 = MSG_MOBITEX
 
 
-char Previous_MSG[2][9][MAX_STR_LEN];		// PH: Buffer for previous message items
+char Previous_MSG[2][10][MAX_STR_LEN];		// PH: Buffer for previous message items
 											// PH: [8]=last filtered messagetext
 
 
@@ -129,22 +157,92 @@ int flex_speed = STAT_FLEX1600;
 int iLineSymbols[16] = { 0, 1, 1, 2, 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3 };
 int iConvertingGroupcall = 0;
 
-void ShowMessage()
+int containsUnknownCharacters = 0;
+
+void parseSingleMessage()
 {
         if(!iConvertingGroupcall)
         {
                 message_buffer[iMessageIndex] = '\0';
                 iMessageIndex = 0;
         }
+	memcpy(Current_MSG[MSG_MESSAGE], message_buffer, MAX_STR_LEN);
 
-        memcpy(Current_MSG[MSG_MESSAGE], message_buffer, MAX_STR_LEN);
+	struct json_object * parentObject = json_object_new_object();
+	struct json_object * dataObject = json_object_new_object();
+	struct json_object * extraInfoObject = json_object_new_object();
 
+	json_object_object_add(parentObject, "data", dataObject);
+	json_object_object_add(parentObject, "extra", extraInfoObject);
+
+	struct json_object * capcodeArray = json_object_new_array();
+
+	struct json_object * textObject = json_object_new_string(Current_MSG[MSG_CAPCODE]);
+	json_object_array_add(capcodeArray, textObject);
+
+	struct json_object * typeObject = json_object_new_string(Current_MSG[MSG_TYPE]);
+	json_object_object_add(dataObject, "type", typeObject);
+
+	struct json_object * modeObject = json_object_new_string("FLEX");
+	json_object_object_add(dataObject, "mode", modeObject);
+
+	struct json_object * timestampObject = json_object_new_string(Current_MSG[MSG_TIMESTAMP]);
+	json_object_object_add(dataObject, "timestamp", timestampObject);
+
+	struct json_object * messageObject = json_object_new_string(Current_MSG[MSG_MESSAGE]);
+	json_object_object_add(dataObject, "message", messageObject);
+
+	struct json_object * isGroupMessageObject = json_object_new_boolean(0);
+	json_object_object_add(extraInfoObject, "isGroupMessage", isGroupMessageObject);
+
+	struct json_object * containsUnknownCharactersObject = json_object_new_boolean(containsUnknownCharacters);
+	json_object_object_add(extraInfoObject, "containsUnknownCharacters", containsUnknownCharactersObject);
+	containsUnknownCharacters = 0;
+
+	json_object_object_add(dataObject, "capcodes", capcodeArray);
+
+	printf("JSON: %s\n", json_object_to_json_string(parentObject));
+
+	const char * testjson = json_object_to_json_string(parentObject);
+	int json_length = (int) strlen(testjson);
+	//printf("JSON length: %d\n", (int) strlen(testjson));
+
+	void *jsondata = malloc(json_length);
+	memcpy(jsondata, testjson, json_length);
+		
+	zmq_msg_t testmsg;
+
+	printf("Succesful sent? %d\n", zmq_msg_init_data(&testmsg, jsondata, strlen(testjson) + 1, NULL, NULL));
+	printf("Message sent: %d\n", zmq_msg_send(&testmsg, socket, 0));
+
+	/* Freeing objects... */
+	
+	json_object_put(capcodeArray);
+	json_object_put(containsUnknownCharactersObject);
+	json_object_put(isGroupMessageObject);
+	json_object_put(messageObject);
+	json_object_put(timestampObject);
+	json_object_put(modeObject);
+	json_object_put(typeObject);
+	json_object_put(textObject);
+	json_object_put(extraInfoObject);
+	json_object_put(dataObject);
+	json_object_put(parentObject);
+
+
+
+}
+
+void ShowMessage()
+{
+	return;
+	printf("\n--------\n");
         printf("Message: %s\n", Current_MSG[MSG_MESSAGE]);
 	printf("Capcode: %s\n", Current_MSG[MSG_CAPCODE]);
 	printf("Mode: %s\n", Current_MSG[MSG_TYPE]);
 	printf("Time: %s\n", Current_MSG[MSG_TIME]);
 	printf("Datum: %s\n", Current_MSG[MSG_DATE]);
-
+	printf("\n--------\n");
 }
 
 
@@ -170,7 +268,19 @@ void ConvertGroupcall(int groupbit, char *vtype, int capcode)
 
 			printf("GROUP%s\n", aGroupnumbers[iConvertingGroupcall-1]);
 
-			strcpy(Current_MSG[MSG_TYPE], " GROUP ");
+			strcpy(Current_MSG[MSG_TYPE], "GROUP");
+			memcpy(Current_MSG[MSG_MESSAGE], message_buffer, MAX_STR_LEN);
+
+			
+			/* JSON meuk */
+
+			struct json_object * parentObject = json_object_new_object();
+			struct json_object * dataObject = json_object_new_object();
+			struct json_object * extraInfoObject = json_object_new_object();
+			json_object_object_add(parentObject, "data", dataObject);
+			json_object_object_add(parentObject, "extra", extraInfoObject);
+
+			struct json_object * capcodeArray = json_object_new_array();
 
 			for (int nCapcode=1; nCapcode <= aGroupCodes[groupbit][CAPCODES_INDEX]; nCapcode++)
 			{
@@ -182,12 +292,66 @@ void ConvertGroupcall(int groupbit, char *vtype, int capcode)
 					sprintf(Current_MSG[MSG_CAPCODE], "%07i", aGroupCodes[groupbit][nCapcode]);
 				}
 
+				struct json_object * textObject = json_object_new_string(Current_MSG[MSG_CAPCODE]);
+				json_object_array_add(capcodeArray, textObject);
+				//json_object_put(textObject);
 				ShowMessage();
 
 			}
 
 			sprintf(Current_MSG[MSG_CAPCODE], "%07i", capcode);
 			strcpy(Current_MSG[MSG_TYPE], vtype);
+
+			struct json_object * textObject = json_object_new_string(Current_MSG[MSG_CAPCODE]);
+			json_object_array_add(capcodeArray, textObject);
+			//json_object_put(textObject);
+
+			struct json_object * typeObject = json_object_new_string(Current_MSG[MSG_TYPE]);
+			json_object_object_add(dataObject, "type", typeObject);
+			//json_object_put(typeObject);
+
+                        struct json_object * modeObject = json_object_new_string("FLEX");
+                        json_object_object_add(dataObject, "mode", modeObject);
+                        //json_object_put(typeObject);
+
+                        struct json_object * timestampObject = json_object_new_string(Current_MSG[MSG_TIMESTAMP]);
+                        json_object_object_add(dataObject, "timestamp", timestampObject);
+                        //json_object_put(typeObject);
+
+                        struct json_object * messageObject = json_object_new_string(Current_MSG[MSG_MESSAGE]);
+                        json_object_object_add(dataObject, "message", messageObject);
+                        //json_object_put(typeObject);
+
+                        struct json_object * isGroupMessageObject = json_object_new_boolean(1);
+                        json_object_object_add(extraInfoObject, "isGroupMessage", isGroupMessageObject);
+                        //json_object_put(typeObject);
+
+                        struct json_object * containsUnknownCharactersObject = json_object_new_boolean(containsUnknownCharacters);
+                        json_object_object_add(extraInfoObject, "containsUnknownCharacters", containsUnknownCharactersObject);
+                        //json_object_put(typeObject);
+			containsUnknownCharacters = 0;
+
+
+			json_object_object_add(dataObject, "capcodes", capcodeArray);
+			//json_object_put(capcodeArray);
+
+			printf("JSON: %s\n", json_object_to_json_string(parentObject));
+
+		        /* Freeing objects... */
+
+		        json_object_put(capcodeArray);
+		        json_object_put(containsUnknownCharactersObject);
+		        json_object_put(isGroupMessageObject);
+		        json_object_put(messageObject);
+		        json_object_put(timestampObject);
+		        json_object_put(modeObject);
+		        json_object_put(typeObject);
+		        json_object_put(textObject);
+		        json_object_put(extraInfoObject);
+		        json_object_put(dataObject);
+		        json_object_put(parentObject);
+
+
 			iMessagesCounter++;
 			ShowMessage();
 			memset(aGroupCodes[groupbit], 0, sizeof(int) * MAXIMUM_GROUPSIZE);
@@ -342,16 +506,18 @@ void display_show_char(int cin)
 		else if (cin > 127)
 		{
 			cin = '?';	// PH: Display a questionmark instead of 'unknown' characters
+			containsUnknownCharacters = 1;
 		}
 		else if ((cin >  0  && cin < 32 && cin != 10) &&
 				 (cin != 23 && cin != 4))
 		{
 			cin = '?';	// PH: Display a questionmark instead of 'unknown' characters
+			containsUnknownCharacters = 1;
 		}
 		message_buffer[iMessageIndex] = cin;
 
 
-	if (iMessageIndex < MAX_STR_LEN-1) iMessageIndex++;
+		if (iMessageIndex < MAX_STR_LEN-1) iMessageIndex++;
 
 } // end of display_show_char
 
@@ -407,7 +573,7 @@ void show_address(long int l, long int l2, int bLongAddress)
 
 	strftime(Current_MSG[MSG_DATE], 50, "%d-%m-%Y", currentTimeInfo);
 	strftime(Current_MSG[MSG_TIME], 50, "%H:%M:%S", currentTimeInfo);
-
+	sprintf(Current_MSG[MSG_TIMESTAMP], "%d", (int) currentTime);
 }
 
 void showframe(int asa, int vsa)
@@ -538,6 +704,7 @@ void showframe(int asa, int vsa)
 					AddAssignment(iAssignedFrame, FlexTempAddress, capcode);
 				}
 			} else {
+				parseSingleMessage();
 				ShowMessage();
 			}
 
@@ -1036,15 +1203,40 @@ open_port(void)
 
 
 int
-main()
+main(int argc, char **argv)
 {
+	signal(SIGINT, signalhandler);
+
+	context = zmq_ctx_new();
+
+	socket = zmq_socket (context, ZMQ_PUB);
+
+	int test123 = zmq_bind(socket, "tcp://*:5555");
+
+	assert (socket);
+
+	//return;
+
+
+/*	struct json_object * parentObject = json_object_new_object();
+	struct json_object * textObject = json_object_new_string("test");
+
+	json_object_object_add(parentObject, "test-parent", textObject);
+
+	printf("JSON: %s\n", json_object_to_json_string(parentObject));
+
+	return; */
+
+	//assert(0);
+	static struct option longopts[] = {
+		{"help", no_argument, 0, 'h'}
+	};
+
+	char shortopts[] = "h";
+
+	
 
 	printf("*** Program started. Mede mogelijk gemaakt door:\n");
-	printf("* Peter Hunt\n");
-	printf("* Rutger A. Heunks\n");
-	printf("* Andreas Verhoeven\n");
-	printf("* Martin Kollaard\n");
-	printf("2013\n");
 
 	setupecc();
 
@@ -1100,8 +1292,9 @@ main()
 		rcver[i] = 0.0;
 	}
 
-	while((bytesRcvd = read(iFileDescriptor, buffer, BUFSIZE - 1)) != -1)
+	while((bytesRcvd = read(iFileDescriptor, buffer, BUFSIZE - 1)) != -1 && exitRequested == 0)
 	{
+
 		if(bytesRcvd == 0)
 			continue;
 
@@ -1165,5 +1358,12 @@ main()
 		//usleep(100);
 		sleep(1);
 	}
+
+	printf("ZMQ close: %d\n", zmq_close(socket));
+	printf("ZMQ context: %d\n", zmq_ctx_destroy(context));
+	
+
+	printf("Bye!\n");
+
 }
 

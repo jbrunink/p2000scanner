@@ -14,6 +14,7 @@
 #include <ctype.h>
 #include <zmq.h>
 #include <signal.h>
+#include <pthread.h>
 
 #include <json_object.h>
 #include <json.h>
@@ -81,6 +82,8 @@ char *trim(char *s) {
     return s;
 }
 
+FILE *dataFile;
+
 char Current_MSG[10][MAX_STR_LEN];			// PH: Buffer for all message items
 											// 1 = MSG_CAPCODE
 											// 2 = MSG_TIME
@@ -102,6 +105,7 @@ int GroupFrame[17] = { -1, -1, -1, -1, -1, -1, -1, -1,
 					   -1, -1, -1, -1, -1, -1, -1, -1, -1 };
 
 
+//void * JSONData;
 
 int FlexTempAddress;			// PH: Set to corresponding groupaddress (0-15)
 
@@ -126,6 +130,8 @@ char ob[32];
 int iFlexBlock = 0;
 int iFlexBlockCount = 0;
 int iFlexTimer = 0;
+
+//pthread_t threads;
 
 int iMessageIndex = 0;
 
@@ -158,6 +164,46 @@ int iLineSymbols[16] = { 0, 1, 1, 2, 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3 };
 int iConvertingGroupcall = 0;
 
 int containsUnknownCharacters = 0;
+
+void freedata(void *data, void *hint)
+{
+	free(data);
+}
+
+// monitoring thread
+static void *req_socket_monitor (void *ctx)
+{
+    zmq_event_t event;
+    int rc;
+
+    void *s = zmq_socket (ctx, ZMQ_PAIR);
+    assert (s);
+
+    rc = zmq_connect (s, "inproc://monitor.req");
+    assert (rc == 0);
+    while (exitRequested == 0) {
+        zmq_msg_t msg;
+        zmq_msg_init (&msg);
+        rc = zmq_recvmsg (s, &msg, 0);
+        if (rc == -1 && zmq_errno() == ETERM) break;
+        assert (rc != -1);
+        memcpy (&event, zmq_msg_data (&msg), sizeof (event));
+        switch (event.event) {
+        case ZMQ_EVENT_CONNECTED:
+            // handle socket connected event
+            break;
+        case ZMQ_EVENT_CLOSED:
+            // handle socket closed event
+            break;
+	case ZMQ_EVENT_ACCEPTED:
+		printf("Connection: %s\n", event.data.accepted.addr);
+	    break;
+        }
+    }
+	printf("Exit requested\n");
+    zmq_close (s);
+    return NULL;
+}
 
 void parseSingleMessage()
 {
@@ -203,17 +249,20 @@ void parseSingleMessage()
 
 	printf("JSON: %s\n", json_object_to_json_string(parentObject));
 
-	const char * testjson = json_object_to_json_string(parentObject);
-	int json_length = (int) strlen(testjson);
+	const char * Current_MSG_JSON = json_object_to_json_string(parentObject);
+	int Current_MSG_JSON_length = (int) strlen(Current_MSG_JSON);
 	//printf("JSON length: %d\n", (int) strlen(testjson));
 
-	void *jsondata = malloc(json_length);
-	memcpy(jsondata, testjson, json_length);
-		
+	void * jsondata = malloc(Current_MSG_JSON_length);
+	memcpy(jsondata, Current_MSG_JSON, Current_MSG_JSON_length);
+	
+
+	fprintf(dataFile, "%s\n", Current_MSG_JSON);
+	
 	zmq_msg_t testmsg;
 
-	printf("Succesful sent? %d\n", zmq_msg_init_data(&testmsg, jsondata, strlen(testjson) + 1, NULL, NULL));
-	printf("Message sent: %d\n", zmq_msg_send(&testmsg, socket, 0));
+	zmq_msg_init_data(&testmsg, jsondata, Current_MSG_JSON_length, freedata, NULL);
+	printf("Bytes sent (SINGLE): %d\n", zmq_msg_send(&testmsg, socket, 0));
 
 	/* Freeing objects... */
 	
@@ -335,7 +384,26 @@ void ConvertGroupcall(int groupbit, char *vtype, int capcode)
 			json_object_object_add(dataObject, "capcodes", capcodeArray);
 			//json_object_put(capcodeArray);
 
+			fprintf(dataFile, "%s\n",json_object_to_json_string(parentObject));
+
 			printf("JSON: %s\n", json_object_to_json_string(parentObject));
+
+//zeromq
+		        const char * Current_MSG_JSON = json_object_to_json_string(parentObject);
+		        int Current_MSG_JSON_length = (int) strlen(Current_MSG_JSON);
+		        //printf("JSON length: %d\n", (int) strlen(testjson));
+
+		        void * jsondata = malloc(Current_MSG_JSON_length);
+		        memcpy(jsondata, Current_MSG_JSON, Current_MSG_JSON_length);
+
+
+		        zmq_msg_t testmsg;
+
+		        zmq_msg_init_data(&testmsg, jsondata, Current_MSG_JSON_length, freedata, NULL);
+		        printf("Bytes sent (GROUPMESSAGE): %d\n", zmq_msg_send(&testmsg, socket, 0));
+
+// end zeromq
+
 
 		        /* Freeing objects... */
 
@@ -1211,7 +1279,16 @@ main(int argc, char **argv)
 
 	socket = zmq_socket (context, ZMQ_PUB);
 
-	int test123 = zmq_bind(socket, "tcp://*:5555");
+	int test123 = zmq_bind(socket, "tcp://eth0:5555");
+
+	int rc = zmq_socket_monitor (socket, "inproc://monitor.req", ZMQ_EVENT_ALL);
+	assert (rc == 0);
+
+	pthread_t threads[1];
+
+	rc = pthread_create (&threads [0], NULL, req_socket_monitor, context);
+
+	assert (rc == 0);
 
 	assert (socket);
 
@@ -1241,7 +1318,7 @@ main(int argc, char **argv)
 	setupecc();
 
 	int iFileDescriptor;
-	FILE *dataFile;
+	
 
 	dataFile = fopen("binary-data.log", "a");
 	if(dataFile == NULL)
@@ -1359,6 +1436,7 @@ main(int argc, char **argv)
 		sleep(1);
 	}
 
+	//printf("Pthread: %d\n", pthread_cancel(threads[0]));
 	printf("ZMQ close: %d\n", zmq_close(socket));
 	printf("ZMQ context: %d\n", zmq_ctx_destroy(context));
 	

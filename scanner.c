@@ -1,3 +1,24 @@
+/*
+ *
+ * Based on the source of PDW (POCSAG, FLEX, ACARS, MOBITEX & ERMES Decoder)
+ *
+ * Jason Petty (2001-2004) and Peter Hunt (2004-2010)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
 #include <stdio.h>   	/* Standard input/output definitions */
 #include <string.h>  	/* String function definitions */
 #include <unistd.h>  	/* UNIX standard function definitions */
@@ -29,6 +50,8 @@
 
 char vtype[8][9]={"SECURE", "INSTR", "SH/TONE", "StNUM", "SfNUM", "ALPHA", "BINARY ", "NuNUM"};
 
+FILE *dataFile;
+
 char aGroupnumbers[16][8]={"-1", "-2", "-3", "-4", "-5", "-6", "-7", "-8", "-9", "10", "11", "12", "13", "14", "15", "16"};
 
 #define STAT_FLEX1600		2
@@ -57,6 +80,10 @@ char aGroupnumbers[16][8]={"-1", "-2", "-3", "-4", "-5", "-6", "-7", "-8", "-9",
 #define MAXIMUM_GROUPSIZE       1000
 #define CAPCODES_INDEX		0
 
+/* Function prototypes */
+
+int ecd();
+
 int iMessagesCounter = 0;
 int exitRequested = 0;
 void * socket;
@@ -67,6 +94,17 @@ void signalhandler(int sig)
 	if(sig == 2)
 	{
 		printf("SIGINT received, requesting exit from while()\n");
+		fprintf(dataFile, "SIGINT received, requesting exit from while()\n");
+		exitRequested = 1;
+	} else if(sig == 9)
+	{
+		printf("SIGKILL received, requesting exit from while()\n");
+		fprintf(dataFile, "SIGKILL received, requesting exit from while()\n");
+		exitRequested = 1;
+	} else if(sig == 15)
+	{
+		printf("SIGTERM received, requesting exit from while()\n");
+		fprintf(dataFile, "SIGTERM received, requesting exit from while()\n");
 		exitRequested = 1;
 	}
 }
@@ -82,7 +120,7 @@ char *trim(char *s) {
     return s;
 }
 
-FILE *dataFile;
+//FILE *dataFile;
 
 char Current_MSG[10][MAX_STR_LEN];			// PH: Buffer for all message items
 											// 1 = MSG_CAPCODE
@@ -173,38 +211,48 @@ void freedata(void *data, void *hint)
 // monitoring thread
 static void *req_socket_monitor (void *ctx)
 {
-    zmq_event_t event;
-    int rc;
+	zmq_event_t event;
+	int rc;
 
-    void *s = zmq_socket (ctx, ZMQ_PAIR);
-    assert (s);
+	void *s = zmq_socket (ctx, ZMQ_PAIR);
+	assert (s);
 
-    rc = zmq_connect (s, "inproc://monitor.req");
-    assert (rc == 0);
-    while (exitRequested == 0) {
-        zmq_msg_t msg;
-        zmq_msg_init (&msg);
-        rc = zmq_recvmsg (s, &msg, 0);
-        if (rc == -1 && zmq_errno() == ETERM) break;
-        assert (rc != -1);
-        memcpy (&event, zmq_msg_data (&msg), sizeof (event));
-        switch (event.event) {
-        case ZMQ_EVENT_CONNECTED:
-            // handle socket connected event
-            break;
-        case ZMQ_EVENT_CLOSED:
-            // handle socket closed event
-            break;
-	case ZMQ_EVENT_ACCEPTED:
-		printf("Connection: %s\n", event.data.accepted.addr);
-		fprintf(dataFile, "Client '%s' connected.\n", event.data.accepted.addr);
-		fflush(dataFile);
-	    break;
-        }
-    }
+	rc = zmq_connect (s, "inproc://monitor.req");
+	assert (rc == 0);
+
+	while (exitRequested == 0)
+	{
+		zmq_msg_t msg;
+		zmq_msg_init (&msg);
+		rc = zmq_recvmsg (s, &msg, 0);
+		if (rc == -1 && zmq_errno() == ETERM) break;
+		assert (rc != -1);
+		memcpy (&event, zmq_msg_data (&msg), sizeof (event));
+
+		switch (event.event)
+		{
+			case ZMQ_EVENT_CONNECTED:
+				printf("Connection to remote peer: %s\n", event.data.connected.addr);
+				fprintf(dataFile, "Connection to remote peer '%s' connected.\n", event.data.connected.addr);
+				fflush(dataFile);
+			break;
+			case ZMQ_EVENT_CLOSED:
+			break;
+			case ZMQ_EVENT_ACCEPTED:
+				printf("Connection: %s\n", event.data.accepted.addr);
+				fprintf(dataFile, "Client '%s' connected.\n", event.data.accepted.addr);
+				fflush(dataFile);
+			break;
+			case ZMQ_EVENT_DISCONNECTED:
+				printf("%s disconnected.\n", event.data.disconnected.addr);
+				fprintf(dataFile, "Client '%s' disconnected.\n", event.data.disconnected.addr);
+				fflush(dataFile);
+		}
+	}
+
 	printf("Exit requested\n");
-    zmq_close (s);
-    return NULL;
+	zmq_close(s);
+	return NULL;
 }
 
 void parseSingleMessage()
@@ -471,6 +519,40 @@ void AddAssignment(int assignedframe, int groupbit, int capcode)
 		iMessageIndex = 0;
 	}
 }
+
+// checksum check for BIW and vector type words
+// returns: 0 if word passes test; 1 if test failed
+int xsumchk(long int l)
+{
+        // was word already marked as bad?
+        if (l > 0x3fffffl) return(1);
+
+        // 4 bit checksum is made by summing up remaining part of word
+        // in 4 bit increments, and taking the 4 lsb and complementing them.
+        // Therefore: if we add up the whole word in 4 bit chunks the 4 lsb
+        // bits had better come out to be 0x0f
+
+        int xs = (int) (l        & 0x0f);
+        xs += (int) ((l>> 4) & 0x0f);
+        xs += (int) ((l>> 8) & 0x0f);
+        xs += (int) ((l>>12) & 0x0f);
+        xs += (int) ((l>>16) & 0x0f);
+        xs += (int) ((l>>20) & 0x01);
+
+        xs = xs & 0x0f;
+
+        if (xs == 0x0f)
+        {
+                //CountBiterrors(0);
+                return(0);
+        }
+        else
+        {
+                //CountBiterrors(1);
+                return(1);
+        }
+}
+
 
 void FlexTIME()
 {
@@ -786,7 +868,7 @@ void showframe(int asa, int vsa)
 
 }
 
-
+/*
 // checksum check for BIW and vector type words
 // returns: 0 if word passes test; 1 if test failed
 int xsumchk(long int l)
@@ -819,7 +901,7 @@ int xsumchk(long int l)
 		return(1);
 	}
 }
-
+*/
 
 // format a received frame
 void showblock(int blknum)
@@ -1276,6 +1358,8 @@ int
 main(int argc, char **argv)
 {
 	signal(SIGINT, signalhandler);
+	signal(SIGTERM, signalhandler);
+	signal(SIGKILL, signalhandler);
 
 	context = zmq_ctx_new();
 
@@ -1441,12 +1525,17 @@ main(int argc, char **argv)
 		sleep(1);
 	}
 
+	fflush(NULL);
+
 	//printf("Pthread: %d\n", pthread_cancel(threads[0]));
-	//printf("ZMQ close: %d\n", zmq_close(socket));
-	//printf("ZMQ context: %d\n", zmq_ctx_destroy(context));
+	printf("ZMQ unbind: %d\n", zmq_unbind(socket, "tcp://*:5555"));
+	printf("ZMQ close: %d\n", zmq_close(socket));
+	printf("ZMQ context: %d\n", zmq_ctx_destroy(context));
 	
 
 	printf("Bye!\n");
+
+	exit(EXIT_SUCCESS);
 
 }
 

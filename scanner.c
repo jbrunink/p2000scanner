@@ -197,6 +197,8 @@ static void *req_socket_monitor (void *ctx)
             break;
 	case ZMQ_EVENT_ACCEPTED:
 		printf("Connection: %s\n", event.data.accepted.addr);
+		fprintf(dataFile, "Client '%s' connected.\n", event.data.accepted.addr);
+		fflush(dataFile);
 	    break;
         }
     }
@@ -1278,8 +1280,11 @@ main(int argc, char **argv)
 	context = zmq_ctx_new();
 
 	socket = zmq_socket (context, ZMQ_PUB);
+	int ipv4only = 0;
+	int socketopt = zmq_setsockopt(socket, ZMQ_IPV4ONLY, &ipv4only, sizeof(int));
+	assert(socketopt == 0);
 
-	int test123 = zmq_bind(socket, "tcp://eth0:5555");
+	int test123 = zmq_bind(socket, "tcp://*:5555");
 
 	int rc = zmq_socket_monitor (socket, "inproc://monitor.req", ZMQ_EVENT_ALL);
 	assert (rc == 0);
@@ -1437,8 +1442,8 @@ main(int argc, char **argv)
 	}
 
 	//printf("Pthread: %d\n", pthread_cancel(threads[0]));
-	printf("ZMQ close: %d\n", zmq_close(socket));
-	printf("ZMQ context: %d\n", zmq_ctx_destroy(context));
+	//printf("ZMQ close: %d\n", zmq_close(socket));
+	//printf("ZMQ context: %d\n", zmq_ctx_destroy(context));
 	
 
 	printf("Bye!\n");

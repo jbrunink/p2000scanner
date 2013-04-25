@@ -36,7 +36,7 @@
 #include <zmq.h>
 #include <signal.h>
 #include <pthread.h>
-
+#include <getopt.h>
 #include <json_object.h>
 #include <json.h>
 
@@ -88,6 +88,8 @@ int iMessagesCounter = 0;
 int exitRequested = 0;
 void * socket;
 void * context;
+
+char serialdevice[250];
 
 void signalhandler(int sig)
 {
@@ -1335,12 +1337,19 @@ frame_flex(char input)
 
 }
 
+
+void 
+usage(void)
+{
+	puts("usage: blabla");
+}
+
 int
 open_port(void)
 {
 	int iFileDescriptor;
 
-	iFileDescriptor = open("/dev/ttyUSB1", O_RDWR | O_NOCTTY);
+	iFileDescriptor = open(serialdevice, O_RDONLY | O_NOCTTY);
 
 	if(iFileDescriptor == -1)
 	{
@@ -1357,6 +1366,37 @@ open_port(void)
 int
 main(int argc, char **argv)
 {
+	extern char *optarg;
+
+        static struct option longopts[] = {
+		{"device", required_argument, 0, 'd'},
+                {"help", no_argument, 0, 'h'}
+        };
+
+        char shortopts[] = "d:h";
+
+	if(argc<=1)
+	{
+		usage();
+		exit(1);
+	}
+
+	char option;
+
+	while((option=getopt_long(argc, argv, shortopts, longopts, NULL)) != -1)
+	{
+		switch(option)
+		{
+			case 'd':
+				strncpy(serialdevice, optarg, 250-1);
+			break;
+			default:
+				usage();
+			break;
+		}
+	}
+
+	
 	signal(SIGINT, signalhandler);
 	signal(SIGTERM, signalhandler);
 	signal(SIGKILL, signalhandler);
@@ -1394,11 +1434,11 @@ main(int argc, char **argv)
 	return; */
 
 	//assert(0);
-	static struct option longopts[] = {
+/*	static struct option longopts[] = {
 		{"help", no_argument, 0, 'h'}
 	};
 
-	char shortopts[] = "h";
+	char shortopts[] = "h"; */
 
 	
 
@@ -1412,6 +1452,12 @@ main(int argc, char **argv)
 	dataFile = fopen("binary-data.log", "a");
 	if(dataFile == NULL)
 	{
+		exit(1);
+	}
+
+	if(setvbuf(dataFile, NULL, _IOLBF, 0))
+	{
+		printf("Something went wrong with setting some buffer options.\n");
 		exit(1);
 	}
 	
@@ -1538,4 +1584,3 @@ main(int argc, char **argv)
 	exit(EXIT_SUCCESS);
 
 }
-

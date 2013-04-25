@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 int exitRequested = 0;
 
@@ -32,13 +33,13 @@ int main()
 
 	void * context = zmq_ctx_new();
 	void * socket = zmq_socket(context, ZMQ_SUB);
-	void * optionvalue = "";
-	zmq_setsockopt(socket, ZMQ_SUBSCRIBE, &optionvalue, 0);
-        int ipv4only = 0;
+	void * subscription = "";
+	zmq_setsockopt(socket, ZMQ_SUBSCRIBE, &subscription, 0);
+	int ipv4only = 0;
         int socketopt = zmq_setsockopt(socket, ZMQ_IPV4ONLY, &ipv4only, sizeof(int));
-
+	assert(socketopt == 0);
 	int connect = zmq_connect(socket, endpoint);
-	printf("Connect: %d\n", connect);
+	assert(connect == 0);
 
 	while(exitRequested == 0)
 	{
@@ -69,10 +70,9 @@ int main()
 
 			testbuffer[iMsgSize] = 0;
 
-			printf("'%s'\n", testbuffer);
+			printf("%s\n", testbuffer);
 			free(testbuffer);
 		}
-		printf("MSG close: %d\n", zmq_msg_close(&message));
 		sleep(1);
 	}
 	
@@ -82,5 +82,7 @@ int main()
 	zmq_ctx_destroy(context);
 
 	printf("Bye!\n");
+
+	exit(EXIT_SUCCESS);
 
 }

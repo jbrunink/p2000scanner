@@ -351,7 +351,7 @@ void ConvertGroupcall(int groupbit, char *vtype, int capcode)
 {
 	message_buffer[iMessageIndex] = '\0';
 
-	char address[16]="";
+	//char address[16]="";
 	int addresses = 0;
 	
 	if(capcode >= 2029568 && capcode <= 2029583)
@@ -558,14 +558,20 @@ int xsumchk(long int l)
 
 void FlexTIME()
 {
+
+	fprintf(dataFile, "FlexTIME() called\n");
+
+	int year, month, day, hour, minutes;
+
 	int i;
 	//char temp[MAX_PATH];
-	char szFlexTIME[128];
+	//char szFlexTIME[128];
 
-	float frame_seconds= (iCurrentFrame & 0x1f) * 1.875;
-	int seconds		 = frame_seconds;
+	//float frame_seconds= (iCurrentFrame & 0x1f) * 1.875;
+	//int seconds		 = frame_seconds;
 
-	static int FLEX_time=0, FLEX_date=0, count=0;
+	static int FLEX_time=0, FLEX_date=0;
+	//static int count = 0;
 
 	int bTime = 0, bDate = 0;
 
@@ -590,22 +596,30 @@ void FlexTIME()
 					printf((("frame[i]: Type == SSID/Local ID.s (i8-i0)(512) & Coverage Zones (c4-c0)(32)\n")));		
 					break;
 				case 1:
+					printf("Current frame (date): %d\n", iCurrentFrame);
 					frame[i] >>= 7;
+					year = (frame[i] & 0x1F) + 1994;
 					//printf("year: %lu\n", (frame[i] & 0x1F) + 1994);
 					frame[i] >>= 5;
+					day = frame[i] & 0x1F;
 					//recFlexTime.wDay = frame[i] & 0x1F;
 					frame[i] >>= 5;
+					month = (frame[i] & 0xF);
 					//recFlexTime.wMonth = (frame[i] & 0xF);
 					bDate = 1;
 					FLEX_date=1;
 					//printf((("BIW DATE: %d-%d-%d\n"), recFlexTime.wDay, recFlexTime.wMonth, recFlexTime.wYear));		
 					break;
 				case 2:
+					printf("Current frame (time): %d\n", iCurrentFrame);
 					frame[i] >>= 7;
+					hour = frame[i] & 0x1F;
 					//recFlexTime.wHour = frame[i] & 0x1F;
 					frame[i] >>= 5;
+					minutes = frame[i] & 0x3F;
 					//recFlexTime.wMinute = frame[i] & 0x3F;
 					frame[i] >>= 6;
+					//seconds = seconds;
 					//recFlexTime.wSecond = seconds;
 					bTime = 1;
 					FLEX_time=1;
@@ -759,8 +773,11 @@ void showframe(int asa, int vsa)
 			switch(vt)
 			{
 			default:
+				continue;
 
 			show_address(frame[j], frame[j+1], bLongAddress);
+			strcpy(Current_MSG[MSG_TYPE], vtype[vt]);
+			//fprintf(dataFile, "Detected %s\n", Current_MSG[MSG_TYPE]);
 			break;
 			case MODE_ALPHA:
 			case MODE_SECURE:
@@ -769,7 +786,8 @@ void showframe(int asa, int vsa)
 			show_phase_speed(vt);
 				int w1, w2, k, c= 0;
 				//int iFragmentNumber, iAssignedFrame;
-				long int cc, cc2, cc3;
+				long int cc;
+				//long int cc2, cc3;
 				// get start and stop word numbers
 				w1 = frame[vb] >> 7;
 				w2 = w1 >> 7;
@@ -951,6 +969,7 @@ void showblock(int blknum)
 	{
 		if (vsa == asa)					// PH: Assuming no messages in current frame,
 		{
+			//fprintf(dataFile, "Empty message...\n");
 			//bEmpty_Frame=true;
 		}
 		else
@@ -958,7 +977,7 @@ void showblock(int blknum)
 			//bEmpty_Frame=false;
 		}
 
-		FlexTIME();
+		//FlexTIME();
 
 		/*if (!bFlexTIME_detected && !bFlexTIME_not_used)
 		{
@@ -971,6 +990,12 @@ void showblock(int blknum)
 				FlexTIME();
 			}
 		}*/
+
+		if((iCurrentFrame == 0) && (last_frame == 127))
+		{
+			FlexTIME();
+		}
+
 		last_frame = iCurrentFrame;
 		//printf("iCurrentFrame: %d\n", iCurrentFrame);
 	}
@@ -1341,7 +1366,7 @@ frame_flex(char input)
 void 
 usage(void)
 {
-	puts("usage: blabla");
+	puts("usage: scanner -d DEVICE [-h]\n");
 }
 
 int
@@ -1353,7 +1378,7 @@ open_port(void)
 
 	if(iFileDescriptor == -1)
 	{
-		printf("Couldn't open /dev/blabla");
+		printf("Couldn't open %s", serialdevice);
 		return -1;
 	} else
 	{
@@ -1408,7 +1433,7 @@ main(int argc, char **argv)
 	int socketopt = zmq_setsockopt(socket, ZMQ_IPV4ONLY, &ipv4only, sizeof(int));
 	assert(socketopt == 0);
 
-	int test123 = zmq_bind(socket, "tcp://*:5555");
+	zmq_bind(socket, "tcp://*:5555");
 
 	int rc = zmq_socket_monitor (socket, "inproc://monitor.req", ZMQ_EVENT_ALL);
 	assert (rc == 0);
@@ -1476,7 +1501,6 @@ main(int argc, char **argv)
 
 	if((iFileDescriptor = open_port()) == -1)
 	{
-		printf("oops!");
 		exit(1);
 	}
 	struct termios newtio;

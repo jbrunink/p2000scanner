@@ -18,7 +18,7 @@ void signalhandler(int sig)
 {
         if(sig == 2)
         {
-                printf("\n\nSIGINT received, requesting exit from while()\n");
+                printf("\nSIGINT received, requesting exit from while()\n");
                 exitRequested = 1;
         }
 }

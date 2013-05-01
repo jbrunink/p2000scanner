@@ -39,6 +39,8 @@
 #include <getopt.h>
 #include <json_object.h>
 #include <json.h>
+#include <syslog.h>
+#include <sys/stat.h> /* umask */
 
 #define SYNC1	0xA6C6
 #define SYNC2	0xAAAA
@@ -47,12 +49,6 @@
 #define EOT2	0xFFFF
 
 #define BUFSIZE 1024
-
-char vtype[8][9]={"SECURE", "INSTR", "SH/TONE", "StNUM", "SfNUM", "ALPHA", "BINARY ", "NuNUM"};
-
-FILE *dataFile;
-
-char aGroupnumbers[16][8]={"-1", "-2", "-3", "-4", "-5", "-6", "-7", "-8", "-9", "10", "11", "12", "13", "14", "15", "16"};
 
 #define STAT_FLEX1600		2
 
@@ -83,31 +79,54 @@ char aGroupnumbers[16][8]={"-1", "-2", "-3", "-4", "-5", "-6", "-7", "-8", "-9",
 /* Function prototypes */
 
 int ecd();
+void SortGroupCall(int groupbit);
+void writeToLog(char *message);
+
+/* End function prototypes */
+
+/* Global variables */
+
+FILE *dataFile = NULL;
+FILE *logFile = NULL;
+
+char vtype[8][9]={"SECURE", "INSTR", "SH/TONE", "StNUM", "SfNUM", "ALPHA", "BINARY ", "NuNUM"};
+char aGroupnumbers[16][8]={"-1", "-2", "-3", "-4", "-5", "-6", "-7", "-8", "-9", "10", "11", "12", "13", "14", "15", "16"};
+char serialdevice[250];
 
 int iMessagesCounter = 0;
 int exitRequested = 0;
+int bisDaemon = 1;
+
+pid_t pid, sid;
+
+/* Global Zeromq variables */
+
 void * socket;
 void * context;
 
-char serialdevice[250];
+/* End global Zeromq variables */
+
+/* End global variables */
 
 void signalhandler(int sig)
 {
-	if(sig == 2)
+	switch(sig)
 	{
-		printf("SIGINT received, requesting exit from while()\n");
-		fprintf(dataFile, "SIGINT received, requesting exit from while()\n");
-		exitRequested = 1;
-	} else if(sig == 9)
-	{
-		printf("SIGKILL received, requesting exit from while()\n");
-		fprintf(dataFile, "SIGKILL received, requesting exit from while()\n");
-		exitRequested = 1;
-	} else if(sig == 15)
-	{
-		printf("SIGTERM received, requesting exit from while()\n");
-		fprintf(dataFile, "SIGTERM received, requesting exit from while()\n");
-		exitRequested = 1;
+		case SIGINT:
+			printf("SIGINT received, requesting exit from while()\n");
+			fprintf(dataFile, "SIGINT received, requesting exit from while()\n");
+			exitRequested = 1;
+		break;
+		case SIGKILL:
+                        printf("SIGKILL received, requesting exit from while()\n");
+                        fprintf(dataFile, "SIGKILL received, requesting exit from while()\n");
+                        exitRequested = 1;
+		break;
+		case SIGTERM:
+                        printf("SIGTERM received, requesting exit from while()\n");
+                        fprintf(dataFile, "SIGTERM received, requesting exit from while()\n");
+                        exitRequested = 1;
+		break;
 	}
 }
 
@@ -121,8 +140,6 @@ char *trim(char *s) {
     ptr[1] = '\0';
     return s;
 }
-
-//FILE *dataFile;
 
 char Current_MSG[10][MAX_STR_LEN];			// PH: Buffer for all message items
 											// 1 = MSG_CAPCODE
@@ -208,6 +225,21 @@ int containsUnknownCharacters = 0;
 void freedata(void *data, void *hint)
 {
 	free(data);
+}
+
+void writeToLog(char *message)
+{
+	time_t currentTime = time(NULL);
+	struct tm * currentTimeInfo;
+	currentTimeInfo = localtime(&currentTime);
+
+	if(logFile == NULL)
+	{
+		/* Do some magic.. */
+	}
+
+	fprintf(logFile, "%s", message);
+
 }
 
 // monitoring thread
@@ -498,6 +530,25 @@ void ShowMessage()
 
 }
 */
+
+void SortGroupCall(int groupbit)	// PH: Sort aGroupCodes[groupbit]
+{
+	for (int nCapcode=1; nCapcode <= aGroupCodes[groupbit][CAPCODES_INDEX]; nCapcode++)
+	{
+		int min, j;
+
+		for (min=nCapcode, j=nCapcode+1; aGroupCodes[groupbit][j] > 0; j++)
+		{
+			if (aGroupCodes[groupbit][j] < aGroupCodes[groupbit][min]) min = j;
+		}
+
+		int tmp=aGroupCodes[groupbit][nCapcode];
+
+		aGroupCodes[groupbit][nCapcode] = aGroupCodes[groupbit][min];
+		aGroupCodes[groupbit][min] = tmp;  // swap them
+	}
+}
+
 void AddAssignment(int assignedframe, int groupbit, int capcode)
 {
 	//printf("Assignment capcode: %d\n", capcode);
@@ -559,7 +610,7 @@ int xsumchk(long int l)
 void FlexTIME()
 {
 
-	fprintf(dataFile, "FlexTIME() called\n");
+	//fprintf(dataFile, "FlexTIME() called\n");
 
 	int year, month, day, hour, minutes;
 
@@ -585,7 +636,7 @@ void FlexTIME()
 	{
 		if(xsumchk(frame[i]) != 0)
 		{
-			//printf((("CRC error in BIW[%d]! (0x%08X)\n"), i, frame[i]));
+			//printf("CRC error in BIW[%d]! (0x%08X)\n", i, frame[i]);
 			return;
 		}
 		if(i)
@@ -596,7 +647,6 @@ void FlexTIME()
 					printf((("frame[i]: Type == SSID/Local ID.s (i8-i0)(512) & Coverage Zones (c4-c0)(32)\n")));		
 					break;
 				case 1:
-					printf("Current frame (date): %d\n", iCurrentFrame);
 					frame[i] >>= 7;
 					year = (frame[i] & 0x1F) + 1994;
 					//printf("year: %lu\n", (frame[i] & 0x1F) + 1994);
@@ -611,7 +661,6 @@ void FlexTIME()
 					//printf((("BIW DATE: %d-%d-%d\n"), recFlexTime.wDay, recFlexTime.wMonth, recFlexTime.wYear));		
 					break;
 				case 2:
-					printf("Current frame (time): %d\n", iCurrentFrame);
 					frame[i] >>= 7;
 					hour = frame[i] & 0x1F;
 					//recFlexTime.wHour = frame[i] & 0x1F;
@@ -660,38 +709,32 @@ void show_phase_speed(int vt)
 	else
 	{
 		strcpy(Current_MSG[MSG_TYPE], vtype[vt]);	// Add flex format.
-	}	
-
-
+	}
 }
 
 void display_show_char(int cin)
 {
-	
-		if (cin == '\n')
-		{
-		}
-		else if (cin > 127)
-		{
-			cin = '?';	// PH: Display a questionmark instead of 'unknown' characters
-			containsUnknownCharacters = 1;
-		}
-		else if ((cin >  0  && cin < 32 && cin != 10) &&
-				 (cin != 23 && cin != 4))
-		{
-			cin = '?';	// PH: Display a questionmark instead of 'unknown' characters
-			containsUnknownCharacters = 1;
-		}
-		message_buffer[iMessageIndex] = cin;
+	if (cin == '\n')
+	{
+	}
+	else if (cin > 127)
+	{
+		cin = '?';	// PH: Display a questionmark instead of 'unknown' characters
+		containsUnknownCharacters = 1;
+	}
+	else if ((cin >  0  && cin < 32 && cin != 10) &&
+			 (cin != 23 && cin != 4))
+	{
+		cin = '?';	// PH: Display a questionmark instead of 'unknown' characters
+		containsUnknownCharacters = 1;
+	}
+	message_buffer[iMessageIndex] = cin;
 
-
-		if (iMessageIndex < MAX_STR_LEN-1) iMessageIndex++;
-
+	if (iMessageIndex < MAX_STR_LEN-1) iMessageIndex++;
 } // end of display_show_char
 
 void show_address(long int l, long int l2, int bLongAddress)
 {
-	
 //	long int capcode;
 
 	if(!bLongAddress)
@@ -977,7 +1020,7 @@ void showblock(int blknum)
 			//bEmpty_Frame=false;
 		}
 
-		//FlexTIME();
+		FlexTIME();
 
 		/*if (!bFlexTIME_detected && !bFlexTIME_not_used)
 		{
@@ -1366,7 +1409,7 @@ frame_flex(char input)
 void 
 usage(void)
 {
-	puts("usage: scanner -d DEVICE [-h]\n");
+	puts("usage: scanner -d DEVICE [-h]");
 }
 
 int
@@ -1387,6 +1430,59 @@ open_port(void)
 	return iFileDescriptor;
 }
 
+int
+daemonize()
+{
+	/* Source: http://www.danielhall.me/2010/01/writing-a-daemon-in-c/ */
+
+	/* Clone ourselves to make a child */
+	pid = fork();
+
+	/* If the pid is less than zero, something went wrong when forking */
+	if(pid < 0)
+	{
+		exit(EXIT_FAILURE);
+	}
+
+	/* If the pid we got back was greater than zero, then the clone was successful and we are the parent. */
+	if(pid > 0)
+	{
+		exit(EXIT_SUCCESS);
+	}
+
+	/* If execution reaches this point we are the child */
+	/* Set the umask to zero */
+	umask(0);
+
+	/* Open a connection to the syslog server */
+	openlog("p2000scanner",LOG_NOWAIT|LOG_PID,LOG_USER); 
+
+	/* Sends a message to the syslog daemon */
+	syslog(LOG_NOTICE, "Successfully started daemon\n");
+
+	/* Try to create our own process group */
+	sid = setsid();
+	if(sid < 0)
+	{
+		syslog(LOG_ERR, "Could not create process group\n");
+		exit(EXIT_FAILURE);
+	}
+
+	/* Change the current working directory */
+	if ((chdir("/")) < 0)
+	{
+		syslog(LOG_ERR, "Could not change working directory to /\n");
+		exit(EXIT_FAILURE);
+	}
+
+	/* Close the standard file descriptors */
+	close(STDIN_FILENO);
+	close(STDOUT_FILENO);
+	close(STDERR_FILENO);
+
+	return EXIT_SUCCESS;
+
+}
 
 int
 main(int argc, char **argv)
@@ -1395,10 +1491,11 @@ main(int argc, char **argv)
 
         static struct option longopts[] = {
 		{"device", required_argument, 0, 'd'},
+		{"daemonize", no_argument, 0, 'D'},
                 {"help", no_argument, 0, 'h'}
         };
 
-        char shortopts[] = "d:h";
+        char shortopts[] = "d:D:h";
 
 	if(argc<=1)
 	{
@@ -1410,13 +1507,24 @@ main(int argc, char **argv)
 
 	while((option=getopt_long(argc, argv, shortopts, longopts, NULL)) != -1)
 	{
+		/* We've got some parameters, so don't daemonize, unless specifically requested */
+		bisDaemon = 0;
+
 		switch(option)
 		{
 			case 'd':
 				strncpy(serialdevice, optarg, 250-1);
 			break;
+			case 'D':
+				bisDaemon = 1;
+			break;
+			case 'h':
+				usage();
+				exit(1);
+			break;
 			default:
 				usage();
+				exit(1);
 			break;
 		}
 	}
@@ -1426,53 +1534,39 @@ main(int argc, char **argv)
 	signal(SIGTERM, signalhandler);
 	signal(SIGKILL, signalhandler);
 
+	/* Initialize Zeromq */
+
 	context = zmq_ctx_new();
-
 	socket = zmq_socket (context, ZMQ_PUB);
+
 	int ipv4only = 0;
-	int socketopt = zmq_setsockopt(socket, ZMQ_IPV4ONLY, &ipv4only, sizeof(int));
-	assert(socketopt == 0);
+	zmq_setsockopt(socket, ZMQ_IPV4ONLY, &ipv4only, sizeof(int));
 
-	zmq_bind(socket, "tcp://*:5555");
+	zmq_bind(socket, "tcp://[*]:5555");
 
-	int rc = zmq_socket_monitor (socket, "inproc://monitor.req", ZMQ_EVENT_ALL);
-	assert (rc == 0);
+	/* Create a thread and initialize socket and bind monitor */
+
+	zmq_socket_monitor(socket, "inproc://monitor.req", ZMQ_EVENT_ALL);
 
 	pthread_t threads[1];
-
-	rc = pthread_create (&threads [0], NULL, req_socket_monitor, context);
-
-	assert (rc == 0);
-
-	assert (socket);
-
-	//return;
-
-
-/*	struct json_object * parentObject = json_object_new_object();
-	struct json_object * textObject = json_object_new_string("test");
-
-	json_object_object_add(parentObject, "test-parent", textObject);
-
-	printf("JSON: %s\n", json_object_to_json_string(parentObject));
-
-	return; */
-
-	//assert(0);
-/*	static struct option longopts[] = {
-		{"help", no_argument, 0, 'h'}
-	};
-
-	char shortopts[] = "h"; */
-
-	
+	pthread_create(&threads[0], NULL, req_socket_monitor, context);
 
 	printf("*** Program started. Mede mogelijk gemaakt door:\n");
 
 	setupecc();
 
 	int iFileDescriptor;
-	
+
+	logFile = fopen("log.txt", "a");
+	if(logFile == NULL)
+	{
+		printf("Cannot open logfile: %s\n", strerror(errno));
+		exit(1);
+	}
+
+	setvbuf(logFile, NULL, _IOLBF, 0);
+
+	writeToLog("Program started\n");
 
 	dataFile = fopen("binary-data.log", "a");
 	if(dataFile == NULL)

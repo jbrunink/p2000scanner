@@ -1,5 +1,5 @@
 /*
- *
+ * scanner: An P2000 paging decoder
  * Based on the source of PDW (POCSAG, FLEX, ACARS, MOBITEX & ERMES Decoder)
  *
  * Jason Petty (2001-2004) and Peter Hunt (2004-2010)
@@ -30,7 +30,6 @@
 #include <stdlib.h>     /* strtol */
 #include <strings.h>
 #include <time.h>       /* time_t, struct tm, time, localtime, asctime */
-#include <getopt.h>
 #include <assert.h>
 #include <ctype.h>
 #include <zmq.h>
@@ -41,6 +40,7 @@
 #include <json.h>
 #include <syslog.h>
 #include <sys/stat.h> /* umask */
+#include <stdarg.h>	/* va_list */
 
 #define SYNC1	0xA6C6
 #define SYNC2	0xAAAA
@@ -80,8 +80,8 @@
 
 int ecd();
 void SortGroupCall(int groupbit);
-void writeToLog(char *message);
-
+//void writeToLog(char *message);
+void writeToLog(const char* format, ...);
 /* End function prototypes */
 
 /* Global variables */
@@ -89,15 +89,19 @@ void writeToLog(char *message);
 FILE *dataFile = NULL;
 FILE *logFile = NULL;
 
-char vtype[8][9]={"SECURE", "INSTR", "SH/TONE", "StNUM", "SfNUM", "ALPHA", "BINARY ", "NuNUM"};
+char vtype[8][9]={"SECURE", "INSTR", "SH/TONE", "StNUM", "SfNUM", "ALPHA", "BINARY", "NuNUM"};
 char aGroupnumbers[16][8]={"-1", "-2", "-3", "-4", "-5", "-6", "-7", "-8", "-9", "10", "11", "12", "13", "14", "15", "16"};
-char serialdevice[250];
+char serialdevice[FILENAME_MAX];
 
 int iMessagesCounter = 0;
 int exitRequested = 0;
-int bisDaemon = 1;
+int bisDaemon = 1; /* default value is true */
+
+int socketMonitorEnd = 0;
 
 pid_t pid, sid;
+
+char endpoint[] = "tcp://[*]:5555";
 
 /* Global Zeromq variables */
 
@@ -158,9 +162,7 @@ char Previous_MSG[2][10][MAX_STR_LEN];		// PH: Buffer for previous message items
 
 
 int aGroupCodes[17][MAXIMUM_GROUPSIZE];
-int GroupFrame[17] = { -1, -1, -1, -1, -1, -1, -1, -1,
-					   -1, -1, -1, -1, -1, -1, -1, -1, -1 };
-
+int GroupFrame[17] = { -1, -1, -1, -1, -1, -1, -1, -1,-1, -1, -1, -1, -1, -1, -1, -1, -1 };
 
 //void * JSONData;
 
@@ -188,7 +190,7 @@ int iFlexBlock = 0;
 int iFlexBlockCount = 0;
 int iFlexTimer = 0;
 
-//pthread_t threads;
+pthread_t threads[1];
 
 int iMessageIndex = 0;
 
@@ -227,19 +229,51 @@ void freedata(void *data, void *hint)
 	free(data);
 }
 
-void writeToLog(char *message)
+/*void writeToLog(char *message)
 {
 	time_t currentTime = time(NULL);
-	struct tm * currentTimeInfo;
-	currentTimeInfo = localtime(&currentTime);
+	struct tm * currentTimeInfo = localtime(&currentTime);
 
 	if(logFile == NULL)
 	{
-		/* Do some magic.. */
 	}
 
 	fprintf(logFile, "%s", message);
 
+}*/
+
+void writeToLog(const char* format, ...)
+{
+	va_list arglist;
+	va_start(arglist, format);
+
+	char * buffer = malloc(1024 * sizeof(char));
+	memset(buffer, 0, 1024 * sizeof(char));
+
+	//vsprintf(buffer, format, arglist);
+	vsnprintf(buffer, 1024, format, arglist);
+
+        time_t currentTime = time(NULL);
+        struct tm * currentTimeInfo = localtime(&currentTime);
+
+	char sDate[50];
+	char sTime[50];
+
+	strftime(sDate, 50, "%d-%m-%Y", currentTimeInfo);
+	strftime(sTime, 50, "%H:%M:%S", currentTimeInfo);
+
+        if(logFile == NULL)
+        {
+                /* Do some magic.. */
+        }
+
+        fprintf(logFile, "[%s %s] %s", sDate, sTime, buffer);
+
+	//syslog(LOG_NOTICE, "%s", buffer);
+
+	free(buffer);
+
+	va_end(arglist);
 }
 
 // monitoring thread
@@ -259,7 +293,14 @@ static void *req_socket_monitor (void *ctx)
 		zmq_msg_t msg;
 		zmq_msg_init (&msg);
 		rc = zmq_recvmsg (s, &msg, 0);
-		if (rc == -1 && zmq_errno() == ETERM) break;
+		if (rc == -1 && zmq_errno() == ETERM)
+		{
+			const char * error = zmq_strerror(errno);
+			writeToLog((char *)error);
+			break;
+		}
+		const char * error = zmq_strerror(errno);
+		writeToLog((char *)error);
 		assert (rc != -1);
 		memcpy (&event, zmq_msg_data (&msg), sizeof (event));
 
@@ -282,9 +323,10 @@ static void *req_socket_monitor (void *ctx)
 				fprintf(dataFile, "Client '%s' disconnected.\n", event.data.disconnected.addr);
 				fflush(dataFile);
 		}
+		zmq_msg_close (&msg);
 	}
-
-	printf("Exit requested\n");
+	writeToLog("Exit requested (monitor loop)\n");
+	//zmq_disconnect(s, "inproc://monitor.req");
 	zmq_close(s);
 	return NULL;
 }
@@ -350,16 +392,16 @@ void parseSingleMessage()
 
 	/* Freeing objects... */
 	
-	json_object_put(capcodeArray);
-	json_object_put(containsUnknownCharactersObject);
-	json_object_put(isGroupMessageObject);
-	json_object_put(messageObject);
-	json_object_put(timestampObject);
-	json_object_put(modeObject);
-	json_object_put(typeObject);
-	json_object_put(textObject);
-	json_object_put(extraInfoObject);
-	json_object_put(dataObject);
+	//json_object_put(capcodeArray);
+	//json_object_put(containsUnknownCharactersObject);
+	//json_object_put(isGroupMessageObject);
+	//json_object_put(messageObject);
+	//json_object_put(timestampObject);
+	//json_object_put(modeObject);
+	//json_object_put(typeObject);
+	//json_object_put(textObject);
+	//json_object_put(extraInfoObject);
+	//json_object_put(dataObject);
 	json_object_put(parentObject);
 
 
@@ -491,7 +533,7 @@ void ConvertGroupcall(int groupbit, char *vtype, int capcode)
 
 		        /* Freeing objects... */
 
-		        json_object_put(capcodeArray);
+		        /*json_object_put(capcodeArray);
 		        json_object_put(containsUnknownCharactersObject);
 		        json_object_put(isGroupMessageObject);
 		        json_object_put(messageObject);
@@ -500,7 +542,7 @@ void ConvertGroupcall(int groupbit, char *vtype, int capcode)
 		        json_object_put(typeObject);
 		        json_object_put(textObject);
 		        json_object_put(extraInfoObject);
-		        json_object_put(dataObject);
+		        json_object_put(dataObject);*/
 		        json_object_put(parentObject);
 
 
@@ -1503,7 +1545,7 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	char option;
+	int option;
 
 	while((option=getopt_long(argc, argv, shortopts, longopts, NULL)) != -1)
 	{
@@ -1513,7 +1555,7 @@ main(int argc, char **argv)
 		switch(option)
 		{
 			case 'd':
-				strncpy(serialdevice, optarg, 250-1);
+				strncpy(serialdevice, optarg, FILENAME_MAX-1);
 			break;
 			case 'D':
 				bisDaemon = 1;
@@ -1523,6 +1565,8 @@ main(int argc, char **argv)
 				exit(1);
 			break;
 			default:
+				/* Test! */
+				//puts("Found unknown switch");
 				usage();
 				exit(1);
 			break;
@@ -1542,14 +1586,17 @@ main(int argc, char **argv)
 	int ipv4only = 0;
 	zmq_setsockopt(socket, ZMQ_IPV4ONLY, &ipv4only, sizeof(int));
 
-	zmq_bind(socket, "tcp://[*]:5555");
+	zmq_bind(socket, endpoint);
+
+	printf("Bound to %s\n", endpoint);
+
 
 	/* Create a thread and initialize socket and bind monitor */
 
 	zmq_socket_monitor(socket, "inproc://monitor.req", ZMQ_EVENT_ALL);
 
-	pthread_t threads[1];
-	pthread_create(&threads[0], NULL, req_socket_monitor, context);
+	//pthread_t threads[1];
+	//pthread_create(&threads[0], NULL, req_socket_monitor, context);
 
 	printf("*** Program started. Mede mogelijk gemaakt door:\n");
 
@@ -1579,7 +1626,9 @@ main(int argc, char **argv)
 		printf("Something went wrong with setting some buffer options.\n");
 		exit(1);
 	}
-	
+
+	pthread_create(&threads[0], NULL, req_socket_monitor, context);
+
 	char buffer[BUFSIZE];
 	unsigned char linedatabuffer[10000];
 	unsigned short freqdatabuffer[10000];
@@ -1691,13 +1740,27 @@ main(int argc, char **argv)
 
 	fflush(NULL);
 
+/*	while(socketMonitorEnd == 0)
+	{
+		printf("effe wachten!\n");
+		sleep(1);
+	}
+*/
 	//printf("Pthread: %d\n", pthread_cancel(threads[0]));
-	printf("ZMQ unbind: %d\n", zmq_unbind(socket, "tcp://*:5555"));
+	//printf("ZMQ monitor unbind: %d\n", zmq_unbind(socket, "inproc://monitor.req"));
+	//sleep(5);
+
+	pthread_detach(threads[0]);
+
+	printf("ZMQ unbind: %d\n", zmq_unbind(socket, endpoint));
 	printf("ZMQ close: %d\n", zmq_close(socket));
 	printf("ZMQ context: %d\n", zmq_ctx_destroy(context));
 	
 
 	printf("Bye!\n");
+
+	fclose(logFile);
+	fclose(dataFile);
 
 	exit(EXIT_SUCCESS);
 

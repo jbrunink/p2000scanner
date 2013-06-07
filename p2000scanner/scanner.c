@@ -1,21 +1,24 @@
 /*
- * scanner: An P2000 paging decoder
- * Based on the source of PDW (POCSAG, FLEX, ACARS, MOBITEX & ERMES Decoder)
+ *  p2000scanner: A P2000 paging decoder (1.0-BETA)
  *
- * Jason Petty (2001-2004) and Peter Hunt (2004-2010)
+ *  Based on the source of PDW (POCSAG, FLEX, ACARS, MOBITEX & ERMES Decoder)
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ *  Jason Petty (2001-2004) and Peter Hunt (2004-2010)
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ *  Modified by Jurgen Brunink and Martin Kollaard (2013)
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -41,6 +44,8 @@
 #include <syslog.h>
 #include <sys/stat.h> /* umask */
 #include <stdarg.h>	/* va_list */
+
+#include "scanner.h"
 
 #define SYNC1	0xA6C6
 #define SYNC2	0xAAAA
@@ -734,6 +739,7 @@ void FlexTIME()
 
 void show_phase_speed(int vt)
 {
+	/*
 	int v;
 
 	switch(flex_speed)
@@ -743,6 +749,7 @@ void show_phase_speed(int vt)
 			v = 1600;
 		break;
 	}
+	*/
 
 	if (vt == MODE_SHORT_INSTRUCTION)
 	{
@@ -1678,14 +1685,14 @@ main(int argc, char **argv)
 			continue;
 
 		int bit;
-		int bitarray[7];
+		//int bitarray[7];
 
 		for(int i = 0; i < bytesRcvd; i++)
 		{
 			for(int j = 7; j >= 0; j--)
 			{
 				bit = (buffer[i] >> j) & 1;
-				bitarray[j] = bit;
+				//bitarray[j] = bit;
 	                	linedatabuffer[offset] = bit << 4;
 		                //printf("bit placed %d\n", linedatabuffer[offset]);
 		                freqdatabuffer[offset++] = timing;

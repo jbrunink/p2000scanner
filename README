@@ -1,0 +1,67 @@
+P2000SCANNER: A P2000 PAGING DECODER (VERSION 1.0-BETA) (http://p2000scanner.watiserloos.in)
+--------------------------------------------------------------------------------------------
+
+p2000scanner is CLI-based *nix application written in C. It uses RS232 to communicate with a receiver (confirmed to work with Flexbox and FTDI-based RS232-USB converter). It can be used in several modes, it can decode all the received information and just present that, it can write all the decoded information to a file (JSON-formatted) and/or send it with ZMQ (pubsub implementation) to subscribers (also JSON-formatted).
+
+At the moment p2000scanner only supports 1600-bit/2-FSK FLEX. (used in the Netherlands)
+
+Example message:
+
+	{ "data": { "type": "ALPHA", "mode": "FLEX", "timestamp": "1370592337", "message": "test", "capcodes": [ "1023032" ] }, "extra": { "isGroupMessage": false, "containsUnknownCharacters": false } }
+
+p2000scanner is still in beta, but has been confirmed to compile and run on: 
+
+	- Ubuntu 10.04.4 LTS (AMD64) with GCC 4.4.3
+	- Debian 7 (ARMv61) with GCC 4.6.3
+
+Do note that most of code came from the PDW branch and thus much of it still needs a lot (really, lots of lot) of cleaning-up. Sorry for that. Most of the code (if not all) still needs documentation, transformation to hungarian notation, logical function naming, error handling. It's very basic at the moment, we're working on that. 
+
+Working cases
+-------------
+
+Despite that p2000scanner is in beta, it is very stable. It's Valgrind-safe (hehe), and over 150.000 FLEX-messages only 9 of them we're not properly decoded. 
+
+Requirements
+------------
+
+p2000scanner is a application written in C (C99).
+
+	- ZMQ >= 3.2.2 (http://www.zeromq.org/)
+	- libconfig >= 1.3.2 (http://www.hyperrealm.com/libconfig/)
+	- libjson >= 0.9 (https://github.com/json-c/json-c)
+
+Usage
+-----
+
+p2000scanner is designed to run in daemonized mode, and read it's configuration parameters from a configuration file (default is p2000scanner.cfg). When parameters are specified on the command-line, no daemonization will occur unless specified by the --daemonize switch. All parameters on the command-line will precede over the parameters in the configuration file. A list of all possible switches/parameters can be found in this file.
+
+NOTE: As of June 2013 this has not been implemented yet, the only supported and REQUIRED switch is '--device=/dev/usbtty0' and '-d' (same functionality). This specifies the device which to use. A log file 'binary-data.log' is also by default enabled, in this file all the messages will be logged in JSON format. The IP where ZMQ needs to bind on, and more parameters are hardcoded in the source, these are not properly documented. 
+
+Switches/parameters
+-------------------
+
+TODO
+
+Description of the directories:
+-------------------------------
+
+p2000scanner: Contains the source code for the application, this directory also contains the buildscript.
+examples: Contains examples for clientside code (Perl and C).
+
+Building the application
+------------------------
+
+You can build p2000scanner by running the following command which in turn uses GCC to compile:
+
+	./build.sh
+
+This will create an executable in the current working directory, called 'scanner'.
+
+Bug reports
+-----------
+
+Please send bug reports to p2000scanner@watiserloos.in and please include as much information as you can. You can also contribute to the source by Git.
+
+For more information, please see our website http://p2000scanner.watiserloos.in. 
+
+

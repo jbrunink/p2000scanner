@@ -33,7 +33,7 @@ p2000scanner is a application written in C (C99).
 Usage
 -----
 
-p2000scanner is designed to run in daemonized mode, and read it's configuration parameters from a configuration file (default is p2000scanner.cfg). When parameters are specified on the command-line, no daemonization will occur unless specified by the --daemonize switch. All parameters on the command-line will precede over the parameters in the configuration file. A list of all possible switches/parameters can be found in this file.
+p2000scanner is designed to run in daemonized mode, and read its configuration parameters from a configuration file (default is p2000scanner.cfg). When parameters are specified on the command-line, no daemonization will occur unless specified by the --daemonize switch. All parameters on the command-line will precede over the parameters in the configuration file. A list of all possible switches/parameters can be found in this file.
 
 NOTE: As of June 2013 this has not been implemented yet, the only supported and REQUIRED switch is '--device=/dev/usbtty0' and '-d' (same functionality). This specifies the device which to use. A log file 'binary-data.log' is also by default enabled, in this file all the messages will be logged in JSON format. The IP where ZMQ needs to bind on, and more parameters are hardcoded in the source, these are not properly documented. 
 

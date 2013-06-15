@@ -47,48 +47,6 @@
 
 #include "scanner.h"
 
-#define SYNC1	0xA6C6
-#define SYNC2	0xAAAA
-
-#define EOT1	0xAAAA
-#define EOT2	0xFFFF
-
-#define BUFSIZE 1024
-
-#define STAT_FLEX1600		2
-
-#define MODE_SECURE			0
-#define MODE_SHORT_INSTRUCTION		1
-#define MODE_SH_TONE			2
-#define MODE_STNUM			3
-#define MODE_SFNUM			4
-#define MODE_ALPHA			5
-#define MODE_BINARY			6
-#define MODE_NUNUM			7
-
-#define MAX_STR_LEN			5120
-
-#define MSG_CAPCODE		1
-#define MSG_TIME		2
-#define MSG_DATE		3
-#define MSG_MODE		4
-#define MSG_TYPE		5
-#define MSG_BITRATE		6
-#define MSG_MESSAGE		7
-#define MSG_MOBITEX		8
-#define MSG_TIMESTAMP		9
-
-#define MAXIMUM_GROUPSIZE       1000
-#define CAPCODES_INDEX		0
-
-/* Function prototypes */
-
-int ecd();
-void SortGroupCall(int groupbit);
-//void writeToLog(char *message);
-void writeToLog(const char* format, ...);
-/* End function prototypes */
-
 /* Global variables */
 
 FILE *dataFile = NULL;
@@ -178,6 +136,10 @@ int iFrameCount = 0;
 unsigned char message_buffer[MAX_STR_LEN+1];// buffer for message characters
 
 int iCurrentCycle, iCurrentFrame;	// Current flex cycle / frame
+
+int reflex = 0;
+
+struct flex_phase phases[4];
 
 long int capcode;
 
@@ -836,18 +798,18 @@ void show_address(long int l, long int l2, int bLongAddress)
 	sprintf(Current_MSG[MSG_TIMESTAMP], "%d", (int) currentTime);
 }
 
-void showframe(int asa, int vsa)
+void showframe(int asa, int vsa, int flex_phase)
 {
 	int bLongAddress = 0;
 	FlexTempAddress = -1;
 
 	int iFragmentNumber, iAssignedFrame;
 
-	if(xsumchk(frame[0]) == 0)
+	if(xsumchk(phases[flex_phase].frame[0]) == 0)
 	{
 		for(int j = asa; j < vsa; j++)
 		{
-			long int cc2 = frame[j] & 0x1fffffl;
+			long int cc2 = phases[flex_phase].frame[j] & 0x1fffffl;
 
 			// check for long addresses (bLongAddress indicates long address)
 			if (cc2 < 0x008001l) bLongAddress=1;
@@ -855,9 +817,9 @@ void showframe(int asa, int vsa)
 			else if (cc2 > 0x1f7FFEl) bLongAddress=1;
 
 			int vb = vsa + j - asa;
-			int vt = (frame[vb] >> 4) & 0x07;
+			int vt = (phases[flex_phase].frame[vb] >> 4) & 0x07;
 
-			if(xsumchk(frame[vb]) != 0)
+			if(xsumchk(phases[flex_phase].frame[vb]) != 0)
 			{
 				continue;
 			}
@@ -867,21 +829,21 @@ void showframe(int asa, int vsa)
 			default:
 				continue;
 
-			show_address(frame[j], frame[j+1], bLongAddress);
+			show_address(phases[flex_phase].frame[j], phases[flex_phase].frame[j+1], bLongAddress);
 			strcpy(Current_MSG[MSG_TYPE], vtype[vt]);
 			//fprintf(dataFile, "Detected %s\n", Current_MSG[MSG_TYPE]);
 			break;
 			case MODE_ALPHA:
 			case MODE_SECURE:
 
-			show_address(frame[j], frame[j+1], bLongAddress);
+			show_address(phases[flex_phase].frame[j], phases[flex_phase].frame[j+1], bLongAddress);
 			show_phase_speed(vt);
 				int w1, w2, k, c= 0;
 				//int iFragmentNumber, iAssignedFrame;
 				long int cc;
 				//long int cc2, cc3;
 				// get start and stop word numbers
-				w1 = frame[vb] >> 7;
+				w1 = phases[flex_phase].frame[vb] >> 7;
 				w2 = w1 >> 7;
 				w1 = w1 & 0x7f;
 				w2 = (w2 & 0x7f) + w1 - 1;
@@ -890,12 +852,12 @@ void showframe(int asa, int vsa)
 				// if != 3 then this is a continued message
 				if (!bLongAddress)
 				{
-					iFragmentNumber = (int) (frame[w1] >> 11) & 0x03;
+					iFragmentNumber = (int) (phases[flex_phase].frame[w1] >> 11) & 0x03;
 					w1++;
 				}
 				else
 				{
-					iFragmentNumber = (int) (frame[vb+1] >> 11) & 0x03;
+					iFragmentNumber = (int) (phases[flex_phase].frame[vb+1] >> 11) & 0x03;
 					w2--;
 				}
 
@@ -907,7 +869,7 @@ void showframe(int asa, int vsa)
 					// skip over header info (depends on fragment number)
 					if ((k > w1) || (iFragmentNumber != 0x03))
 					{
-						c = (int) frame[k] & 0x7fl;
+						c = (int) phases[flex_phase].frame[k] & 0x7fl;
 						if (c != 0x03)
 						{
 							//printf("%s", c);
@@ -915,7 +877,7 @@ void showframe(int asa, int vsa)
 						}
 					}
 
-					cc = (long) frame[k] >> 7;
+					cc = (long) phases[flex_phase].frame[k] >> 7;
 					c = (int) cc & 0x7fl;
 
 					if (c != 0x03)
@@ -924,7 +886,7 @@ void showframe(int asa, int vsa)
 						display_show_char(c);
 					}
 
-					cc = (long) frame[k] >> 14;
+					cc = (long) phases[flex_phase].frame[k] >> 14;
 					c = (int) cc & 0x7fl;
 
 					if (c != 0x03)
@@ -945,15 +907,15 @@ void showframe(int asa, int vsa)
 				break;
 
 				case MODE_SHORT_INSTRUCTION:
-					show_address(frame[j], frame[j+1], bLongAddress);	// show address
+					show_address(phases[flex_phase].frame[j], phases[flex_phase].frame[j+1], bLongAddress);	// show address
 					if(bFLEX_isGroupMessage) 
 					{
 						//printf("");
 						continue;
 					}
 					show_phase_speed(vt);
-					iAssignedFrame  = (frame[vb] >> 10) & 0x7f;	// Frame with groupmessage
-					FlexTempAddress = (frame[vb] >> 17) & 0x7f;	// Listen to this groupcode
+					iAssignedFrame  = (phases[flex_phase].frame[vb] >> 10) & 0x7f;	// Frame with groupmessage
+					FlexTempAddress = (phases[flex_phase].frame[vb] >> 17) & 0x7f;	// Listen to this groupcode
 				break;
 
 			}
@@ -1016,7 +978,7 @@ int xsumchk(long int l)
 */
 
 // format a received frame
-void showblock(int blknum)
+void showblock(int blknum, int flex_phase)
 {
 	int j, k, err, asa, vsa;
 	long int cc;
@@ -1028,7 +990,7 @@ void showblock(int blknum)
 		for (j=0; j<32; j++)
 		{
 			k = (j*8) + i;
-			ob[j] = block[k];
+			ob[j] = phases[flex_phase].codewordbuffer[k];
 		}
 
 		err = ecd();		// do error correction
@@ -1046,7 +1008,7 @@ void showblock(int blknum)
 
 		if (err == 3) cc ^= 0x400000l; // flag uncorrectable errors
 
-		frame[k] = cc;
+		phases[flex_phase].frame[k] = cc;
 	}
 	if ((flex_speed == STAT_FLEX1600) && ((cc == 0x0000l) || (cc == 0x1fffffl)))
 	{
@@ -1054,8 +1016,8 @@ void showblock(int blknum)
 //		printf("No more data\n");
 	}
 
-	vsa = (int) ((frame[0] >> 10) & 0x3f);		// get word where vector  field starts (6 bits)
-	asa = (int) ((frame[0] >> 8)  & 0x03) + 1;	// get word where address field starts (2 bits)
+	vsa = (int) ((phases[flex_phase].frame[0] >> 10) & 0x3f);		// get word where vector  field starts (6 bits)
+	asa = (int) ((phases[flex_phase].frame[0] >> 8)  & 0x03) + 1;	// get word where address field starts (2 bits)
 
 	if (blknum == 0)
 	{
@@ -1094,7 +1056,7 @@ void showblock(int blknum)
 	// show messages in frame if last block was processed and we're not in reflex mode
 	else if (((blknum == 10) || bNoMoreData) /*&& !bReflex*/)
 	{
-		showframe(asa, vsa);
+		showframe(asa, vsa, flex_phase);
 		if (bNoMoreData) iFlexBlock=1;
 	}
 }
@@ -1319,19 +1281,29 @@ frame_flex(char input)
 
 			if(nOnes(iBitBuffer[0] ^ iBitBuffer[3] ^ 0xFFFF) < 2)
 			{
-				for(int speed = 0; speed < 8; speed++)
+				int speed;
+				for(speed = 0; speed < 8; speed++)
 				{
 					if((nOnes(iBitBuffer[0] ^ syncs[speed]) + nOnes(iBitBuffer[3] ^ ~syncs[speed])) < 2)
 					{
 						if ((speed & 0x03) == 0)
 						{
+							/* FLEX-1600 */
+							flex_speed = STAT_FLEX1600;
+						} else if((speed & 0x03) == 0x03)
+						{
+							/* FLEX-6400 */
+							flex_speed = STAT_FLEX6400;
+
+						} else
+						{
+							flex_speed = STAT_FLEX3200;
 						}
 
 						iFlexTimer = 20;
 
 						g_sps   = (speed & 0x01) ? 3200 : 1600;
 						level   = (speed & 0x02) ? 4 : 2;
-						int reflex = 1;
 						reflex = (speed & 0x04) ? 1 : 0;
 						//printf("g_sps: %d\n", g_sps);
 						//printf("level: %d\n", level);
@@ -1339,6 +1311,12 @@ frame_flex(char input)
 						break;
 
 					}
+				}
+				if(speed == 8)
+				{
+					/* Found sync */
+					printf("UNKNOWN SYNC HEADER : %hX %hX %hX %hX", iBitBuffer[0], iBitBuffer[1], iBitBuffer[2], iBitBuffer[3]);
+					return;
 				}
 			} else
 			{
@@ -1360,6 +1338,9 @@ frame_flex(char input)
 		if(iFlexBlockCount > 0)
 		{
 			iFlexBlockCount--;
+
+			/* This fills the FIW (Frame Information Word) codeword, with frame and cycle number */
+
 			if((iFlexBlockCount < 72) && (iFlexBlockCount > 39))
 			{
 				if(input < 2)
@@ -1369,12 +1350,9 @@ frame_flex(char input)
 				{
 					ob[71-iFlexBlockCount] = 0;
 				}
-				//printf("ob: %d\n", ob[71-iFlexBlockCount]);
 			} else if(iFlexBlockCount == 39)
 			{
-				//printf("Hier doen we error correction\n");
 				int cer = ecd();
-				//printf("ecd says: %d\n", cer);
 
 				if(cer < 2)
 				{
@@ -1416,20 +1394,89 @@ frame_flex(char input)
 
 	} else
 	{
+		if(bct == 0)
+		{
+			memset(&phases[FLEX_PHASE_A], 0, sizeof(struct flex_phase));
+			memset(&phases[FLEX_PHASE_B], 0, sizeof(struct flex_phase));
+			memset(&phases[FLEX_PHASE_C], 0, sizeof(struct flex_phase));
+			memset(&phases[FLEX_PHASE_D], 0, sizeof(struct flex_phase));
+			phases[FLEX_PHASE_A].phase = 'A';
+			phases[FLEX_PHASE_B].phase = 'B';
+			phases[FLEX_PHASE_C].phase = 'C';
+			phases[FLEX_PHASE_D].phase = 'D';
+		}
+
 		if(g_sps == 1600)
 		{
-			if(input < 2) block[bct] = 1;
-			else block[bct] = 0;
+			if(input < 2)
+			{
+				block[bct] = 1;
+				phases[FLEX_PHASE_A].codewordbuffer[bct] = 1;
+			}
+			else
+			{
+				block[bct] = 0;
+				phases[FLEX_PHASE_A].codewordbuffer[bct] = 0;
+			}
+
+			if(level == 4)
+			{
+				if((input == 0) || (input == 3))
+				{
+					phases[FLEX_PHASE_B].codewordbuffer[bct] = 1;
+				} else
+				{
+					phases[FLEX_PHASE_B].codewordbuffer[bct] = 0;	
+				}
+			}
 			bct++;
 		} else
 		{
 			if(hbit == 0)
 			{
-				if(input < 2) block[bct] = 1;
-				else block[bct] = 0;
+				if(input < 2)
+				{
+					block[bct] = 1;
+					phases[FLEX_PHASE_A].codewordbuffer[bct] = 1;
+				} else
+				{
+					block[bct] = 0;
+					phases[FLEX_PHASE_A].codewordbuffer[bct] = 0;
+				}
+
+				if(level == 4)
+				{
+					if((input == 0) || (input == 3))
+					{
+						phases[FLEX_PHASE_B].codewordbuffer[bct] = 1;
+					} else
+					{
+						phases[FLEX_PHASE_B].codewordbuffer[bct] = 0;
+					}
+				}
+
 				hbit++;
 			} else
 			{
+				if(input < 2)
+				{
+					phases[FLEX_PHASE_C].codewordbuffer[bct] = 1;
+				} else
+				{
+					phases[FLEX_PHASE_C].codewordbuffer[bct] = 0;
+				}
+
+				if(level == 4)
+				{
+					if((input == 0) || (input == 3))
+					{
+						phases[FLEX_PHASE_D].codewordbuffer[bct] = 1;
+					} else
+					{
+						phases[FLEX_PHASE_D].codewordbuffer[bct] = 0;
+					}
+				}
+
 				hbit = 0;
 				bct++;
 			}
@@ -1439,7 +1486,7 @@ frame_flex(char input)
 		{
 			bct = 0;
 
-			showblock(11-iFlexBlock);
+			showblock((11-iFlexBlock), FLEX_PHASE_A);
 			//printf("--- End\n");
 
 			iFlexBlock--;

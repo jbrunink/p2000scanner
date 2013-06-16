@@ -85,27 +85,16 @@ void signalhandler(int sig)
 			exitRequested = 1;
 		break;
 		case SIGKILL:
-                        printf("SIGKILL received, requesting exit from while()\n");
-                        fprintf(dataFile, "SIGKILL received, requesting exit from while()\n");
-                        exitRequested = 1;
+			printf("SIGKILL received, requesting exit from while()\n");
+			fprintf(dataFile, "SIGKILL received, requesting exit from while()\n");
+			exitRequested = 1;
 		break;
 		case SIGTERM:
-                        printf("SIGTERM received, requesting exit from while()\n");
-                        fprintf(dataFile, "SIGTERM received, requesting exit from while()\n");
-                        exitRequested = 1;
+			printf("SIGTERM received, requesting exit from while()\n");
+			fprintf(dataFile, "SIGTERM received, requesting exit from while()\n");
+			exitRequested = 1;
 		break;
 	}
-}
-
-char *trim(char *s) {
-    char *ptr;
-    if (!s)
-        return NULL;   // handle NULL string
-    if (!*s)
-        return s;      // handle empty string
-    for (ptr = s + strlen(s) - 1; (ptr >= s) && isspace(*ptr); --ptr);
-    ptr[1] = '\0';
-    return s;
 }
 
 char Current_MSG[10][MAX_STR_LEN];			// PH: Buffer for all message items
@@ -196,19 +185,6 @@ void freedata(void *data, void *hint)
 	free(data);
 }
 
-/*void writeToLog(char *message)
-{
-	time_t currentTime = time(NULL);
-	struct tm * currentTimeInfo = localtime(&currentTime);
-
-	if(logFile == NULL)
-	{
-	}
-
-	fprintf(logFile, "%s", message);
-
-}*/
-
 void writeToLog(const char* format, ...)
 {
 	va_list arglist;
@@ -220,8 +196,8 @@ void writeToLog(const char* format, ...)
 	//vsprintf(buffer, format, arglist);
 	vsnprintf(buffer, 1024, format, arglist);
 
-        time_t currentTime = time(NULL);
-        struct tm * currentTimeInfo = localtime(&currentTime);
+	time_t currentTime = time(NULL);
+	struct tm * currentTimeInfo = localtime(&currentTime);
 
 	char sDate[50];
 	char sTime[50];
@@ -229,12 +205,12 @@ void writeToLog(const char* format, ...)
 	strftime(sDate, 50, "%d-%m-%Y", currentTimeInfo);
 	strftime(sTime, 50, "%H:%M:%S", currentTimeInfo);
 
-        if(logFile == NULL)
-        {
-                /* Do some magic.. */
-        }
+	if(logFile == NULL)
+	{
+			/* Do some magic.. */
+	}
 
-        fprintf(logFile, "[%s %s] %s", sDate, sTime, buffer);
+	fprintf(logFile, "[%s %s] %s", sDate, sTime, buffer);
 
 	//syslog(LOG_NOTICE, "%s", buffer);
 
@@ -300,11 +276,12 @@ static void *req_socket_monitor (void *ctx)
 
 void parseSingleMessage()
 {
-        if(!iConvertingGroupcall)
-        {
-                message_buffer[iMessageIndex] = '\0';
-                iMessageIndex = 0;
-        }
+	if(!iConvertingGroupcall)
+	{
+			message_buffer[iMessageIndex] = '\0';
+			iMessageIndex = 0;
+	}
+
 	memcpy(Current_MSG[MSG_MESSAGE], message_buffer, MAX_STR_LEN);
 
 	struct json_object * parentObject = json_object_new_object();
@@ -322,8 +299,11 @@ void parseSingleMessage()
 	struct json_object * typeObject = json_object_new_string(Current_MSG[MSG_TYPE]);
 	json_object_object_add(dataObject, "type", typeObject);
 
-	struct json_object * modeObject = json_object_new_string("FLEX");
+	struct json_object * modeObject = json_object_new_string(Current_MSG[MSG_MODE]);
 	json_object_object_add(dataObject, "mode", modeObject);
+
+	struct json_object * bitrateObject = json_object_new_string(Current_MSG[MSG_BITRATE]);
+	json_object_object_add(dataObject, "bitrate", bitrateObject);
 
 	struct json_object * timestampObject = json_object_new_string(Current_MSG[MSG_TIMESTAMP]);
 	json_object_object_add(dataObject, "timestamp", timestampObject);
@@ -349,7 +329,6 @@ void parseSingleMessage()
 	void * jsondata = malloc(Current_MSG_JSON_length);
 	memcpy(jsondata, Current_MSG_JSON, Current_MSG_JSON_length);
 	
-
 	fprintf(dataFile, "%s\n", Current_MSG_JSON);
 	
 	zmq_msg_t testmsg;
@@ -359,27 +338,14 @@ void parseSingleMessage()
 
 	/* Freeing objects... */
 	
-	//json_object_put(capcodeArray);
-	//json_object_put(containsUnknownCharactersObject);
-	//json_object_put(isGroupMessageObject);
-	//json_object_put(messageObject);
-	//json_object_put(timestampObject);
-	//json_object_put(modeObject);
-	//json_object_put(typeObject);
-	//json_object_put(textObject);
-	//json_object_put(extraInfoObject);
-	//json_object_put(dataObject);
 	json_object_put(parentObject);
-
-
-
 }
 
 void ShowMessage()
 {
 	return;
 	printf("\n--------\n");
-        printf("Message: %s\n", Current_MSG[MSG_MESSAGE]);
+	printf("Message: %s\n", Current_MSG[MSG_MESSAGE]);
 	printf("Capcode: %s\n", Current_MSG[MSG_CAPCODE]);
 	printf("Mode: %s\n", Current_MSG[MSG_TYPE]);
 	printf("Time: %s\n", Current_MSG[MSG_TIME]);
@@ -452,27 +418,29 @@ void ConvertGroupcall(int groupbit, char *vtype, int capcode)
 			json_object_object_add(dataObject, "type", typeObject);
 			//json_object_put(typeObject);
 
-                        struct json_object * modeObject = json_object_new_string("FLEX");
-                        json_object_object_add(dataObject, "mode", modeObject);
-                        //json_object_put(typeObject);
+			struct json_object * modeObject = json_object_new_string(Current_MSG[MSG_MODE]);
+			json_object_object_add(dataObject, "mode", modeObject);
+			//json_object_put(typeObject);
 
-                        struct json_object * timestampObject = json_object_new_string(Current_MSG[MSG_TIMESTAMP]);
-                        json_object_object_add(dataObject, "timestamp", timestampObject);
-                        //json_object_put(typeObject);
+    	    struct json_object * bitrateObject = json_object_new_string(Current_MSG[MSG_BITRATE]);
+       		json_object_object_add(dataObject, "bitrate", bitrateObject);
 
-                        struct json_object * messageObject = json_object_new_string(Current_MSG[MSG_MESSAGE]);
-                        json_object_object_add(dataObject, "message", messageObject);
-                        //json_object_put(typeObject);
+			struct json_object * timestampObject = json_object_new_string(Current_MSG[MSG_TIMESTAMP]);
+			json_object_object_add(dataObject, "timestamp", timestampObject);
+			//json_object_put(typeObject);
 
-                        struct json_object * isGroupMessageObject = json_object_new_boolean(1);
-                        json_object_object_add(extraInfoObject, "isGroupMessage", isGroupMessageObject);
-                        //json_object_put(typeObject);
+			struct json_object * messageObject = json_object_new_string(Current_MSG[MSG_MESSAGE]);
+			json_object_object_add(dataObject, "message", messageObject);
+			//json_object_put(typeObject);
 
-                        struct json_object * containsUnknownCharactersObject = json_object_new_boolean(containsUnknownCharacters);
-                        json_object_object_add(extraInfoObject, "containsUnknownCharacters", containsUnknownCharactersObject);
-                        //json_object_put(typeObject);
+			struct json_object * isGroupMessageObject = json_object_new_boolean(1);
+			json_object_object_add(extraInfoObject, "isGroupMessage", isGroupMessageObject);
+			//json_object_put(typeObject);
+
+			struct json_object * containsUnknownCharactersObject = json_object_new_boolean(containsUnknownCharacters);
+			json_object_object_add(extraInfoObject, "containsUnknownCharacters", containsUnknownCharactersObject);
+			//json_object_put(typeObject);
 			containsUnknownCharacters = 0;
-
 
 			json_object_object_add(dataObject, "capcodes", capcodeArray);
 			//json_object_put(capcodeArray);
@@ -482,36 +450,23 @@ void ConvertGroupcall(int groupbit, char *vtype, int capcode)
 			printf("JSON: %s\n", json_object_to_json_string(parentObject));
 
 //zeromq
-		        const char * Current_MSG_JSON = json_object_to_json_string(parentObject);
-		        int Current_MSG_JSON_length = (int) strlen(Current_MSG_JSON);
-		        //printf("JSON length: %d\n", (int) strlen(testjson));
+			const char * Current_MSG_JSON = json_object_to_json_string(parentObject);
+			int Current_MSG_JSON_length = (int) strlen(Current_MSG_JSON);
+			//printf("JSON length: %d\n", (int) strlen(testjson));
 
-		        void * jsondata = malloc(Current_MSG_JSON_length);
-		        memcpy(jsondata, Current_MSG_JSON, Current_MSG_JSON_length);
+			void * jsondata = malloc(Current_MSG_JSON_length);
+			memcpy(jsondata, Current_MSG_JSON, Current_MSG_JSON_length);
 
+			zmq_msg_t testmsg;
 
-		        zmq_msg_t testmsg;
-
-		        zmq_msg_init_data(&testmsg, jsondata, Current_MSG_JSON_length, freedata, NULL);
-		        printf("Bytes sent (GROUPMESSAGE): %d\n", zmq_msg_send(&testmsg, socket, 0));
+			zmq_msg_init_data(&testmsg, jsondata, Current_MSG_JSON_length, freedata, NULL);
+			printf("Bytes sent (GROUPMESSAGE): %d\n", zmq_msg_send(&testmsg, socket, 0));
 
 // end zeromq
 
 
-		        /* Freeing objects... */
-
-		        /*json_object_put(capcodeArray);
-		        json_object_put(containsUnknownCharactersObject);
-		        json_object_put(isGroupMessageObject);
-		        json_object_put(messageObject);
-		        json_object_put(timestampObject);
-		        json_object_put(modeObject);
-		        json_object_put(typeObject);
-		        json_object_put(textObject);
-		        json_object_put(extraInfoObject);
-		        json_object_put(dataObject);*/
-		        json_object_put(parentObject);
-
+			/* Freeing objects... */
+			json_object_put(parentObject);
 
 			iMessagesCounter++;
 			ShowMessage();
@@ -519,26 +474,10 @@ void ConvertGroupcall(int groupbit, char *vtype, int capcode)
 
 			GroupFrame[groupbit] = -1;
 			iConvertingGroupcall=0;		// PH: Reset for next groupmessage
-
 		}
 	}
 	iMessageIndex = 0;
 }
-/*
-void ShowMessage()
-{
-	if(!iConvertingGroupcall) 
-	{
-		message_buffer[iMessageIndex] = '\0';
-		iMessageIndex = 0;
-	}
-
-	memcpy(Current_MSG[MSG_MESSAGE], message_buffer, MAX_STR_LEN);
-
-	printf("Message: %s\n", Current_MSG[MSG_MESSAGE]);
-
-}
-*/
 
 void SortGroupCall(int groupbit)	// PH: Sort aGroupCodes[groupbit]
 {
@@ -586,33 +525,33 @@ void AddAssignment(int assignedframe, int groupbit, int capcode)
 // returns: 0 if word passes test; 1 if test failed
 int xsumchk(long int l)
 {
-        // was word already marked as bad?
-        if (l > 0x3fffffl) return(1);
+		// was word already marked as bad?
+		if (l > 0x3fffffl) return(1);
 
-        // 4 bit checksum is made by summing up remaining part of word
-        // in 4 bit increments, and taking the 4 lsb and complementing them.
-        // Therefore: if we add up the whole word in 4 bit chunks the 4 lsb
-        // bits had better come out to be 0x0f
+		// 4 bit checksum is made by summing up remaining part of word
+		// in 4 bit increments, and taking the 4 lsb and complementing them.
+		// Therefore: if we add up the whole word in 4 bit chunks the 4 lsb
+		// bits had better come out to be 0x0f
 
-        int xs = (int) (l        & 0x0f);
-        xs += (int) ((l>> 4) & 0x0f);
-        xs += (int) ((l>> 8) & 0x0f);
-        xs += (int) ((l>>12) & 0x0f);
-        xs += (int) ((l>>16) & 0x0f);
-        xs += (int) ((l>>20) & 0x01);
+		int xs = (int) (l        & 0x0f);
+		xs += (int) ((l>> 4) & 0x0f);
+		xs += (int) ((l>> 8) & 0x0f);
+		xs += (int) ((l>>12) & 0x0f);
+		xs += (int) ((l>>16) & 0x0f);
+		xs += (int) ((l>>20) & 0x01);
 
-        xs = xs & 0x0f;
+		xs = xs & 0x0f;
 
-        if (xs == 0x0f)
-        {
-                //CountBiterrors(0);
-                return(0);
-        }
-        else
-        {
-                //CountBiterrors(1);
-                return(1);
-        }
+		if (xs == 0x0f)
+		{
+				//CountBiterrors(0);
+				return(0);
+		}
+		else
+		{
+				//CountBiterrors(1);
+				return(1);
+		}
 }
 
 
@@ -699,19 +638,40 @@ void FlexTIME()
 	}
 }
 
-void show_phase_speed(int vt)
+void show_phase_speed(int vt, int flex_phase)
 {
-	/*
-	int v;
-
 	switch(flex_speed)
 	{
 		default:
 		case STAT_FLEX1600:
-			v = 1600;
-		break;
+			sprintf(Current_MSG[MSG_BITRATE], "1600");
+			break;
+
+		case STAT_FLEX3200:
+			sprintf(Current_MSG[MSG_BITRATE], "3200");
+			break;
+
+		case STAT_FLEX6400:
+			sprintf(Current_MSG[MSG_BITRATE], "6400");
+			break;
 	}
-	*/
+
+	switch(flex_phase)
+	{
+		default:
+		case FLEX_PHASE_A:
+			sprintf(Current_MSG[MSG_MODE], "FLEX-A");
+			break;
+		case FLEX_PHASE_B:
+			sprintf(Current_MSG[MSG_MODE], "FLEX-B");
+			break;
+		case FLEX_PHASE_C:
+			sprintf(Current_MSG[MSG_MODE], "FLEX-C");
+			break;
+		case FLEX_PHASE_D:
+			sprintf(Current_MSG[MSG_MODE], "FLEX-D");
+			break;
+	}
 
 	if (vt == MODE_SHORT_INSTRUCTION)
 	{
@@ -826,50 +786,68 @@ void showframe(int asa, int vsa, int flex_phase)
 
 			switch(vt)
 			{
-			default:
-				continue;
+				default:
+					continue;
 
-			show_address(phases[flex_phase].frame[j], phases[flex_phase].frame[j+1], bLongAddress);
-			strcpy(Current_MSG[MSG_TYPE], vtype[vt]);
-			//fprintf(dataFile, "Detected %s\n", Current_MSG[MSG_TYPE]);
-			break;
-			case MODE_ALPHA:
-			case MODE_SECURE:
+					show_address(phases[flex_phase].frame[j], phases[flex_phase].frame[j+1], bLongAddress);
+					strcpy(Current_MSG[MSG_TYPE], vtype[vt]);
+					break;
 
-			show_address(phases[flex_phase].frame[j], phases[flex_phase].frame[j+1], bLongAddress);
-			show_phase_speed(vt);
-				int w1, w2, k, c= 0;
-				//int iFragmentNumber, iAssignedFrame;
-				long int cc;
-				//long int cc2, cc3;
-				// get start and stop word numbers
-				w1 = phases[flex_phase].frame[vb] >> 7;
-				w2 = w1 >> 7;
-				w1 = w1 & 0x7f;
-				w2 = (w2 & 0x7f) + w1 - 1;
+				case MODE_ALPHA:
+				case MODE_SECURE:
+					show_address(phases[flex_phase].frame[j], phases[flex_phase].frame[j+1], bLongAddress);
+					show_phase_speed(vt, flex_phase);
+					int w1, w2, k, c= 0;
+					//int iFragmentNumber, iAssignedFrame;
+					long int cc;
+					//long int cc2, cc3;
+					// get start and stop word numbers
+					w1 = phases[flex_phase].frame[vb] >> 7;
+					w2 = w1 >> 7;
+					w1 = w1 & 0x7f;
+					w2 = (w2 & 0x7f) + w1 - 1;
 
-				// get message fragment number (bits 11 and 12) from first header word
-				// if != 3 then this is a continued message
-				if (!bLongAddress)
-				{
-					iFragmentNumber = (int) (phases[flex_phase].frame[w1] >> 11) & 0x03;
-					w1++;
-				}
-				else
-				{
-					iFragmentNumber = (int) (phases[flex_phase].frame[vb+1] >> 11) & 0x03;
-					w2--;
-				}
-
-				for (k=w1; k<=w2; k++)				// dump all message characters onto screen
-				{
-					/*if (frame[k] > 0x3fffffl) display_color(&Pane1, COLOR_BITERRORS);
-					else display_color(&Pane1, COLOR_MESSAGE);*/
-
-					// skip over header info (depends on fragment number)
-					if ((k > w1) || (iFragmentNumber != 0x03))
+					// get message fragment number (bits 11 and 12) from first header word
+					// if != 3 then this is a continued message
+					if (!bLongAddress)
 					{
-						c = (int) phases[flex_phase].frame[k] & 0x7fl;
+						iFragmentNumber = (int) (phases[flex_phase].frame[w1] >> 11) & 0x03;
+						w1++;
+					}
+					else
+					{
+						iFragmentNumber = (int) (phases[flex_phase].frame[vb+1] >> 11) & 0x03;
+						w2--;
+					}
+
+					for (k=w1; k<=w2; k++)				// dump all message characters onto screen
+					{
+						/*if (frame[k] > 0x3fffffl) display_color(&Pane1, COLOR_BITERRORS);
+						else display_color(&Pane1, COLOR_MESSAGE);*/
+
+						// skip over header info (depends on fragment number)
+						if ((k > w1) || (iFragmentNumber != 0x03))
+						{
+							c = (int) phases[flex_phase].frame[k] & 0x7fl;
+							if (c != 0x03)
+							{
+								//printf("%s", c);
+								display_show_char(c);
+							}
+						}
+
+						cc = (long) phases[flex_phase].frame[k] >> 7;
+						c = (int) cc & 0x7fl;
+
+						if (c != 0x03)
+						{
+							//printf("%s", c);
+							display_show_char(c);
+						}
+
+						cc = (long) phases[flex_phase].frame[k] >> 14;
+						c = (int) cc & 0x7fl;
+
 						if (c != 0x03)
 						{
 							//printf("%s", c);
@@ -877,34 +855,14 @@ void showframe(int asa, int vsa, int flex_phase)
 						}
 					}
 
-					cc = (long) phases[flex_phase].frame[k] >> 7;
-					c = (int) cc & 0x7fl;
-
-					if (c != 0x03)
+					if (iFragmentNumber < 3)	// Change last 0 of bitrate into fragmentnumber
 					{
-						//printf("%s", c);
-						display_show_char(c);
-					}
+						//Current_MSG[MSG_BITRATE][3] = '1' + iFragmentNumber;
+					}		
 
-					cc = (long) phases[flex_phase].frame[k] >> 14;
-					c = (int) cc & 0x7fl;
+					printf("\n");
 
-					if (c != 0x03)
-					{
-						//printf("%s", c);
-						display_show_char(c);
-					}
-				}
-
-				if (iFragmentNumber < 3)	// Change last 0 of bitrate into fragmentnumber
-				{
-					//Current_MSG[MSG_BITRATE][3] = '1' + iFragmentNumber;
-				}		
-
-				printf("\n");
-
-
-				break;
+					break;
 
 				case MODE_SHORT_INSTRUCTION:
 					show_address(phases[flex_phase].frame[j], phases[flex_phase].frame[j+1], bLongAddress);	// show address
@@ -913,11 +871,10 @@ void showframe(int asa, int vsa, int flex_phase)
 						//printf("");
 						continue;
 					}
-					show_phase_speed(vt);
+					show_phase_speed(vt, flex_phase);
 					iAssignedFrame  = (phases[flex_phase].frame[vb] >> 10) & 0x7f;	// Frame with groupmessage
 					FlexTempAddress = (phases[flex_phase].frame[vb] >> 17) & 0x7f;	// Listen to this groupcode
-				break;
-
+					break;
 			}
 
 			if(vt == MODE_SHORT_INSTRUCTION || bFLEX_isGroupMessage)
@@ -935,7 +892,6 @@ void showframe(int asa, int vsa, int flex_phase)
 			}
 
 			if(bLongAddress) j++;
-
 
 		}
 	}
@@ -1277,6 +1233,13 @@ frame_flex(char input)
 
 		if(nh < 2)
 		{
+			/* Reset phase strucs */
+			memset(&phases[FLEX_PHASE_A], 0, 4 * sizeof(struct flex_phase));
+			phases[FLEX_PHASE_A].phase = 'A';
+			phases[FLEX_PHASE_B].phase = 'B';
+			phases[FLEX_PHASE_C].phase = 'C';
+			phases[FLEX_PHASE_D].phase = 'D';
+
 			iFlexBlockCount = 89;
 
 			if(nOnes(iBitBuffer[0] ^ iBitBuffer[3] ^ 0xFFFF) < 2)
@@ -1394,18 +1357,6 @@ frame_flex(char input)
 
 	} else
 	{
-		if(bct == 0)
-		{
-			memset(&phases[FLEX_PHASE_A], 0, sizeof(struct flex_phase));
-			memset(&phases[FLEX_PHASE_B], 0, sizeof(struct flex_phase));
-			memset(&phases[FLEX_PHASE_C], 0, sizeof(struct flex_phase));
-			memset(&phases[FLEX_PHASE_D], 0, sizeof(struct flex_phase));
-			phases[FLEX_PHASE_A].phase = 'A';
-			phases[FLEX_PHASE_B].phase = 'B';
-			phases[FLEX_PHASE_C].phase = 'C';
-			phases[FLEX_PHASE_D].phase = 'D';
-		}
-
 		if(g_sps == 1600)
 		{
 			if(input < 2)
@@ -1487,7 +1438,21 @@ frame_flex(char input)
 			bct = 0;
 
 			showblock((11-iFlexBlock), FLEX_PHASE_A);
-			//printf("--- End\n");
+
+			if(level == 4)
+			{
+				showblock((11-iFlexBlock), FLEX_PHASE_B);
+			}
+
+			if(g_sps == 3200)
+			{
+				showblock((11-iFlexBlock), FLEX_PHASE_C);
+
+				if(level == 4)
+				{
+					showblock((11-iFlexBlock), FLEX_PHASE_D);
+				}
+			}
 
 			iFlexBlock--;
 			if(iFlexBlock == 0)
@@ -1585,13 +1550,13 @@ main(int argc, char **argv)
 {
 	extern char *optarg;
 
-        static struct option longopts[] = {
+		static struct option longopts[] = {
 		{"device", required_argument, 0, 'd'},
 		{"daemonize", no_argument, 0, 'D'},
-                {"help", no_argument, 0, 'h'}
-        };
+				{"help", no_argument, 0, 'h'}
+		};
 
-        char shortopts[] = "d:D:h";
+		char shortopts[] = "d:D:h";
 
 	if(argc<=1)
 	{
@@ -1740,10 +1705,10 @@ main(int argc, char **argv)
 			{
 				bit = (buffer[i] >> j) & 1;
 				//bitarray[j] = bit;
-	                	linedatabuffer[offset] = bit << 4;
-		                //printf("bit placed %d\n", linedatabuffer[offset]);
-		                freqdatabuffer[offset++] = timing;
-	        	        if(offset >= 10000)
+						linedatabuffer[offset] = bit << 4;
+						//printf("bit placed %d\n", linedatabuffer[offset]);
+						freqdatabuffer[offset++] = timing;
+						if(offset >= 10000)
 				{
 					offset = 0;
 				}

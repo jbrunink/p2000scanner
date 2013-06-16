@@ -12,7 +12,7 @@ void SortGroupCall(int groupbit);
 void AddAssignment(int assignedframe, int groupbit, int capcode);
 int xsumchk(long int l);
 void FlexTIME();
-void show_phase_speed(int vt);
+void show_phase_speed(int vt, int flex_phase);
 void display_show_char(int cin);
 void show_address(long int l, long int l2, int bLongAddress);
 void showframe(int asa, int vsa, int flex_phase);

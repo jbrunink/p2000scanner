@@ -179,6 +179,7 @@ int iLineSymbols[16] = { 0, 1, 1, 2, 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3 };
 int iConvertingGroupcall = 0;
 
 int containsUnknownCharacters = 0;
+int uncorrectableError = 0;
 
 void freedata(void *data, void *hint)
 {
@@ -318,6 +319,10 @@ void parseSingleMessage()
 	json_object_object_add(extraInfoObject, "containsUnknownCharacters", containsUnknownCharactersObject);
 	containsUnknownCharacters = 0;
 
+	struct json_object * uncorrectableErrorObject = json_object_new_boolean(uncorrectableError);
+	json_object_object_add(extraInfoObject, "uncorrectableErrorDetected", uncorrectableErrorObject);
+	uncorrectableError = 0;
+
 	json_object_object_add(dataObject, "capcodes", capcodeArray);
 
 	printf("JSON: %s\n", json_object_to_json_string(parentObject));
@@ -441,6 +446,10 @@ void ConvertGroupcall(int groupbit, char *vtype, int capcode)
 			json_object_object_add(extraInfoObject, "containsUnknownCharacters", containsUnknownCharactersObject);
 			//json_object_put(typeObject);
 			containsUnknownCharacters = 0;
+
+			struct json_object * uncorrectableErrorObject = json_object_new_boolean(uncorrectableError);
+			json_object_object_add(extraInfoObject, "uncorrectableErrorDetected", uncorrectableErrorObject);
+			uncorrectableError = 0;
 
 			json_object_object_add(dataObject, "capcodes", capcodeArray);
 			//json_object_put(capcodeArray);
@@ -1182,9 +1191,9 @@ frame_flex(char input)
 {
 	static short int iBitBuffer[4] = { 0, 0, 0, 0 };
 	static int cy, fr;
-	static int bct, hbit;
+	static int bct, hbit, iCodeWordCount;
 
-	int nh; //geen idee wat dit is
+	int nh;
 	double aver = 0.0;
 	int ihd;
 	int hd = 0;
@@ -1349,7 +1358,7 @@ frame_flex(char input)
 			if(iFlexBlockCount == 0)
 			{
 				iFlexBlock = 11;
-				bct = 0;
+				iCodeWordCount = 0;
 				hbit = 0;
 			}
 
@@ -1361,48 +1370,48 @@ frame_flex(char input)
 		{
 			if(input < 2)
 			{
-				block[bct] = 1;
-				phases[FLEX_PHASE_A].codewordbuffer[bct] = 1;
+				block[iCodeWordCount] = 1;
+				phases[FLEX_PHASE_A].codewordbuffer[iCodeWordCount] = 1;
 			}
 			else
 			{
-				block[bct] = 0;
-				phases[FLEX_PHASE_A].codewordbuffer[bct] = 0;
+				block[iCodeWordCount] = 0;
+				phases[FLEX_PHASE_A].codewordbuffer[iCodeWordCount] = 0;
 			}
 
 			if(level == 4)
 			{
 				if((input == 0) || (input == 3))
 				{
-					phases[FLEX_PHASE_B].codewordbuffer[bct] = 1;
+					phases[FLEX_PHASE_B].codewordbuffer[iCodeWordCount] = 1;
 				} else
 				{
-					phases[FLEX_PHASE_B].codewordbuffer[bct] = 0;	
+					phases[FLEX_PHASE_B].codewordbuffer[iCodeWordCount] = 0;	
 				}
 			}
-			bct++;
+			iCodeWordCount++;
 		} else
 		{
 			if(hbit == 0)
 			{
 				if(input < 2)
 				{
-					block[bct] = 1;
-					phases[FLEX_PHASE_A].codewordbuffer[bct] = 1;
+					block[iCodeWordCount] = 1;
+					phases[FLEX_PHASE_A].codewordbuffer[iCodeWordCount] = 1;
 				} else
 				{
-					block[bct] = 0;
-					phases[FLEX_PHASE_A].codewordbuffer[bct] = 0;
+					block[iCodeWordCount] = 0;
+					phases[FLEX_PHASE_A].codewordbuffer[iCodeWordCount] = 0;
 				}
 
 				if(level == 4)
 				{
 					if((input == 0) || (input == 3))
 					{
-						phases[FLEX_PHASE_B].codewordbuffer[bct] = 1;
+						phases[FLEX_PHASE_B].codewordbuffer[iCodeWordCount] = 1;
 					} else
 					{
-						phases[FLEX_PHASE_B].codewordbuffer[bct] = 0;
+						phases[FLEX_PHASE_B].codewordbuffer[iCodeWordCount] = 0;
 					}
 				}
 
@@ -1411,31 +1420,31 @@ frame_flex(char input)
 			{
 				if(input < 2)
 				{
-					phases[FLEX_PHASE_C].codewordbuffer[bct] = 1;
+					phases[FLEX_PHASE_C].codewordbuffer[iCodeWordCount] = 1;
 				} else
 				{
-					phases[FLEX_PHASE_C].codewordbuffer[bct] = 0;
+					phases[FLEX_PHASE_C].codewordbuffer[iCodeWordCount] = 0;
 				}
 
 				if(level == 4)
 				{
 					if((input == 0) || (input == 3))
 					{
-						phases[FLEX_PHASE_D].codewordbuffer[bct] = 1;
+						phases[FLEX_PHASE_D].codewordbuffer[iCodeWordCount] = 1;
 					} else
 					{
-						phases[FLEX_PHASE_D].codewordbuffer[bct] = 0;
+						phases[FLEX_PHASE_D].codewordbuffer[iCodeWordCount] = 0;
 					}
 				}
 
 				hbit = 0;
-				bct++;
+				iCodeWordCount++;
 			}
 		}
 		
-		if(bct == 256)
+		if(iCodeWordCount == 256)
 		{
-			bct = 0;
+			iCodeWordCount = 0;
 
 			showblock((11-iFlexBlock), FLEX_PHASE_A);
 
@@ -1550,13 +1559,13 @@ main(int argc, char **argv)
 {
 	extern char *optarg;
 
-		static struct option longopts[] = {
+	static struct option longopts[] = {
 		{"device", required_argument, 0, 'd'},
 		{"daemonize", no_argument, 0, 'D'},
-				{"help", no_argument, 0, 'h'}
-		};
+		{"help", no_argument, 0, 'h'}
+	};
 
-		char shortopts[] = "d:D:h";
+	char shortopts[] = "d:D:h";
 
 	if(argc<=1)
 	{
@@ -1609,15 +1618,9 @@ main(int argc, char **argv)
 
 	printf("Bound to %s\n", endpoint);
 
-
 	/* Create a thread and initialize socket and bind monitor */
 
 	zmq_socket_monitor(socket, "inproc://monitor.req", ZMQ_EVENT_ALL);
-
-	//pthread_t threads[1];
-	//pthread_create(&threads[0], NULL, req_socket_monitor, context);
-
-	printf("*** Program started. Mede mogelijk gemaakt door:\n");
 
 	setupecc();
 
@@ -1657,8 +1660,6 @@ main(int argc, char **argv)
 	unsigned int tempdata = 48;
 	unsigned int tempsymbol = 49;
 
-
-
 	int offset = 0;
 
 	if((iFileDescriptor = open_port()) == -1)
@@ -1697,7 +1698,6 @@ main(int argc, char **argv)
 			continue;
 
 		int bit;
-		//int bitarray[7];
 
 		for(int i = 0; i < bytesRcvd; i++)
 		{
@@ -1705,10 +1705,10 @@ main(int argc, char **argv)
 			{
 				bit = (buffer[i] >> j) & 1;
 				//bitarray[j] = bit;
-						linedatabuffer[offset] = bit << 4;
-						//printf("bit placed %d\n", linedatabuffer[offset]);
-						freqdatabuffer[offset++] = timing;
-						if(offset >= 10000)
+				linedatabuffer[offset] = bit << 4;
+				//printf("bit placed %d\n", linedatabuffer[offset]);
+				freqdatabuffer[offset++] = timing;
+				if(offset >= 10000)
 				{
 					offset = 0;
 				}
@@ -1749,25 +1749,10 @@ main(int argc, char **argv)
 
 			if(pd_i == 10000) pd_i = 0;
 		}
-
-		//printf("\n");
-
-		//printf("--- End\n");
-		//usleep(100);
 		sleep(1);
 	}
 
 	fflush(NULL);
-
-/*	while(socketMonitorEnd == 0)
-	{
-		printf("effe wachten!\n");
-		sleep(1);
-	}
-*/
-	//printf("Pthread: %d\n", pthread_cancel(threads[0]));
-	//printf("ZMQ monitor unbind: %d\n", zmq_unbind(socket, "inproc://monitor.req"));
-	//sleep(5);
 
 	pthread_detach(threads[0]);
 

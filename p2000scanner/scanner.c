@@ -59,6 +59,7 @@ char serialdevice[FILENAME_MAX];
 int iMessagesCounter = 0;
 int exitRequested = 0;
 int bisDaemon = 1; /* default value is true */
+int bFlexActive = 0;
 
 int socketMonitorEnd = 0;
 
@@ -971,14 +972,17 @@ void showblock(int blknum, int flex_phase)
 			if (ob[j] == 0) cc ^= 0x100000l;
 		}
 
-		if (err == 3) cc ^= 0x400000l; // flag uncorrectable errors
+		if (err == 3) 
+		{
+			cc ^= 0x400000l; // flag uncorrectable errors
+			uncorrectableError = 1;
+		}
 
 		phases[flex_phase].frame[k] = cc;
 	}
 	if ((flex_speed == STAT_FLEX1600) && ((cc == 0x0000l) || (cc == 0x1fffffl)))
 	{
 		bNoMoreData = 1;	// Speed up frame processing
-//		printf("No more data\n");
 	}
 
 	vsa = (int) ((phases[flex_phase].frame[0] >> 10) & 0x3f);		// get word where vector  field starts (6 bits)
@@ -1191,7 +1195,7 @@ frame_flex(char input)
 {
 	static short int iBitBuffer[4] = { 0, 0, 0, 0 };
 	static int cy, fr;
-	static int bct, hbit, iCodeWordCount;
+	static int hbit, iCodeWordCount;
 
 	int nh;
 	double aver = 0.0;
@@ -1273,6 +1277,7 @@ frame_flex(char input)
 						}
 
 						iFlexTimer = 20;
+						bFlexActive = 1;
 
 						g_sps   = (speed & 0x01) ? 3200 : 1600;
 						level   = (speed & 0x02) ? 4 : 2;
@@ -1466,6 +1471,7 @@ frame_flex(char input)
 			iFlexBlock--;
 			if(iFlexBlock == 0)
 			{
+				bFlexActive = 0;
 				iFrameCount++;
 				//printf("This is the end! Frame ID: %d\n", iFrameCount);
 			}
@@ -1659,6 +1665,8 @@ main(int argc, char **argv)
 	double temptiming;
 	unsigned int tempdata = 48;
 	unsigned int tempsymbol = 49;
+	unsigned int pd_lcw = 0;
+	signed int pd_dinc = 0;
 
 	int offset = 0;
 
@@ -1734,6 +1742,17 @@ main(int argc, char **argv)
 			}
 
 			tempsymbol ^= 0x03;
+
+/*			if(!bFlexActive && ((tempsymbol >> 1) != pd_lcw))
+			{
+				
+			} else
+			{
+				pd_dinc += freqdatabuffer[pd_i];
+				printf("No POCSAG\n");
+			}
+*/
+
 
 			while(temptiming >= (exc + 0.5 * timing))
 			{

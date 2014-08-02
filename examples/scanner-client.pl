@@ -1,5 +1,7 @@
-/* Written by Martin Kollaard */
 #!/usr/bin/perl
+
+# Written by Martin Kollaard
+
 use strict;
 use warnings;
 use JSON;
@@ -12,7 +14,7 @@ use POSIX qw( strftime );
 my $context = zmq_init();
 my $subscriber = zmq_socket($context, ZMQ_SUB);
 zmq_setsockopt($subscriber, ZMQ_IPV4ONLY, 0);
-zmq_connect($subscriber, 'tcp://[eenipv6address]:5555');
+zmq_connect($subscriber, 'tcp://127.0.0.1:5555');
 zmq_setsockopt($subscriber, ZMQ_SUBSCRIBE, '');
 while (1) {
         my $msg = zmq_recvmsg($subscriber);
